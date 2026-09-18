@@ -43,15 +43,18 @@ Au **premier lancement**, si tu n'as pas encore de config nixpick, l'outil repre
 `transparent_background` de superfile (`~/.config/superfile/config.toml`) — chez toi
 c'est déjà `true`.
 
-### Raccourcis TUI (lazygit / fzf)
+### Raccourcis TUI (fzf / superfile)
 
-- `/` ou `Ctrl+U` — focus recherche
-- `j` / `k` — naviguer
-- `Entrée` — ajouter (modale avec aperçu du diff, `y` pour confirmer)
-- `d` — basculer mode simulation
-- `t` — fond transparent (comme superfile, mémorisé dans `~/.config/nixpick/config.toml`)
-- `r` — reconstruire l'index
-- `?` — aide
+- taper — cherche tout de suite
+- `↑` `↓` — naviguer **sans quitter** la recherche
+- `↵` — ajouter le paquet surligné (modale + aperçu du diff)
+- `esc` — vider la recherche, puis quitter
+- `tab` — focus liste / recherche
+- `i` — masquer les paquets déjà dans la config
+- `d` — mode simulation
+- `t` — fond transparent
+- `r` ou `Ctrl+R` — reconstruire l'index
+- `F1` — aide
 - `q` — quitter
 
 Les paquets déjà dans `environment.systemPackages` sont marqués `✓` en jaune.
