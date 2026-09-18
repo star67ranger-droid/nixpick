@@ -8,16 +8,32 @@ fichier ni deviner le bon nom d'attribut.
 ```bash
 cd ~/Projets/nixpick
 python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt
 ```
+
+## Commande `nixpick`
+
+Deux façons d'avoir la commande **`nixpick`** partout (sans `./nixpick.py`) :
+
+1. **Immédiat** — lien dans ton PATH (déjà fait si tu as suivi l'install) :
+   ```bash
+   chmod +x ~/Projets/nixpick/bin/nixpick
+   ln -sf ~/Projets/nixpick/bin/nixpick ~/.local/bin/nixpick
+   ```
+   Puis ouvre un nouveau terminal et tape `nixpick`.
+
+2. **NixOS** — entrée dans `environment.systemPackages` (dans `modules/packages.nix`), puis :
+   ```bash
+   sudo nixos-rebuild switch --flake /etc/nixos#nixos
+   ```
+   Même commande, même après reboot, pour tous les shells.
 
 ## Lancer
 
 | Commande | Effet |
 | :--- | :--- |
-| `./nixpick.py` | **TUI** (recherche live, panneau détail, modale de confirmation) |
-| `./nixpick.py firefox` | mode CLI rapide (comme avant) |
+| `nixpick` | **TUI** (recherche live, panneau détail, modale de confirmation) |
+| `nixpick firefox` | mode CLI rapide (comme avant) |
 | `./nixpick.py --dry-run` | TUI en simulation |
 | `./nixpick.py --refresh` | TUI, index reconstruit au démarrage |
 | `./nixpick.py --transparent` | TUI avec fond transparent |

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Lance nixpick avec le venv du projet (fonctionne aussi via lien dans ~/.local/bin).
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+VENV_PY="$ROOT/.venv/bin/python"
+
+if [[ ! -x "$VENV_PY" ]]; then
+  echo "nixpick: environnement Python absent." >&2
+  echo "  cd $ROOT" >&2
+  echo "  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
+  exit 1
+fi
+
+exec "$VENV_PY" "$ROOT/nixpick.py" "$@"
