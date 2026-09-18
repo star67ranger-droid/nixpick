@@ -3,8 +3,40 @@
 Chercher un paquet nixpkgs et l'ajouter à ma configuration NixOS, sans ouvrir de
 fichier ni deviner le bon nom d'attribut.
 
+## Installation (une fois)
+
+```bash
+cd ~/Projets/nixpick
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
-$ nixpick obsidian
+
+## Lancer
+
+| Commande | Effet |
+| :--- | :--- |
+| `./nixpick.py` | **TUI** (recherche live, panneau détail, modale de confirmation) |
+| `./nixpick.py firefox` | mode CLI rapide (comme avant) |
+| `./nixpick.py --dry-run` | TUI en simulation |
+| `./nixpick.py --refresh` | TUI, index reconstruit au démarrage |
+
+### Raccourcis TUI (lazygit / fzf)
+
+- `/` ou `Ctrl+U` — focus recherche
+- `j` / `k` — naviguer
+- `Entrée` — ajouter (modale avec aperçu du diff, `y` pour confirmer)
+- `d` — basculer mode simulation
+- `r` — reconstruire l'index
+- `?` — aide
+- `q` — quitter
+
+Les paquets déjà dans `environment.systemPackages` sont marqués `✓` en jaune.
+
+## Mode CLI
+
+```
+$ ./nixpick.py obsidian
 
    1. obsidian 1.13.4
       Powerful knowledge base that works on top of a local folder of plain t
