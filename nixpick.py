@@ -41,6 +41,16 @@ def main() -> int:
         help="simulation : n'écrit pas dans packages.nix",
     )
     parser.add_argument(
+        "--transparent",
+        action="store_true",
+        help="TUI : fond transparent (comme superfile)",
+    )
+    parser.add_argument(
+        "--opaque",
+        action="store_true",
+        help="TUI : fond opaque (ignore la config)",
+    )
+    parser.add_argument(
         "--tui",
         action="store_true",
         help="force la TUI même si un terme est passé",
@@ -59,7 +69,17 @@ def main() -> int:
     if args.term and not args.tui:
         return run_cli(args.term, refresh=args.refresh, dry_run=args.dry_run)
 
-    return run_tui(refresh=args.refresh, dry_run=args.dry_run)
+    transparent: bool | None = None
+    if args.transparent:
+        transparent = True
+    elif args.opaque:
+        transparent = False
+
+    return run_tui(
+        refresh=args.refresh,
+        dry_run=args.dry_run,
+        transparent=transparent,
+    )
 
 
 if __name__ == "__main__":

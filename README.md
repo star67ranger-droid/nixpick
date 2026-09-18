@@ -20,6 +20,12 @@ pip install -r requirements.txt
 | `./nixpick.py firefox` | mode CLI rapide (comme avant) |
 | `./nixpick.py --dry-run` | TUI en simulation |
 | `./nixpick.py --refresh` | TUI, index reconstruit au démarrage |
+| `./nixpick.py --transparent` | TUI avec fond transparent |
+| `./nixpick.py --opaque` | TUI avec fond opaque |
+
+Au **premier lancement**, si tu n'as pas encore de config nixpick, l'outil reprend
+`transparent_background` de superfile (`~/.config/superfile/config.toml`) — chez toi
+c'est déjà `true`.
 
 ### Raccourcis TUI (lazygit / fzf)
 
@@ -27,6 +33,7 @@ pip install -r requirements.txt
 - `j` / `k` — naviguer
 - `Entrée` — ajouter (modale avec aperçu du diff, `y` pour confirmer)
 - `d` — basculer mode simulation
+- `t` — fond transparent (comme superfile, mémorisé dans `~/.config/nixpick/config.toml`)
 - `r` — reconstruire l'index
 - `?` — aide
 - `q` — quitter

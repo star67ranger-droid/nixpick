@@ -11,6 +11,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, RichLog, Static
 
+from config import load_transparent_background, save_transparent_background
 from engine import (
     AddFailure,
     AddPlan,
@@ -87,9 +88,11 @@ class HelpModal(ModalScreen[None]):
 [bold]j[/] [bold]k[/]                 naviguer dans la liste
 [bold]r[/]                   reconstruire l'index nixpkgs
 [bold]d[/]                   basculer mode simulation
+[bold]t[/]                   fond transparent (comme superfile)
 [bold]?[/]                   cette aide
 [bold]q[/]                   quitter
 
+[dim]Fond transparent : utile seulement si ton terminal (Kitty…) a l'opacité activée.[/]
 [dim]Un switch NixOS commit et pousse /etc/nixos — jamais lancé automatiquement.[/]
 """
 
@@ -107,15 +110,44 @@ class NixPickApp(App[None]):
     TITLE = "nixpick"
     SUB_TITLE = "paquets NixOS"
 
+    # Palette proche de superfile onedark (#232326 panneaux, #737994 bordures).
     CSS = """
     Screen {
-        background: #11111b;
+        background: #2c2d31;
+    }
+
+    Header {
+        background: #232326;
+        color: #a7aab0;
+        dock: top;
+        border-bottom: solid #737994;
+    }
+
+    Footer {
+        background: #232326;
+        color: #737994;
+        dock: bottom;
+        border-top: solid #737994;
+    }
+
+    FooterKey {
+        background: transparent;
+        color: #57a5e5;
+    }
+
+    FooterKey > .footer-key--key {
+        color: #8fb573;
     }
 
     #search {
         margin: 0 1 0 1;
-        border: tall #89b4fa;
-        background: #1e1e2e;
+        border: tall #737994;
+        background: #232326;
+        color: #a7aab0;
+    }
+
+    #search:focus {
+        border: tall #57a5e5;
     }
 
     #main {
@@ -125,75 +157,133 @@ class NixPickApp(App[None]):
 
     #results-panel {
         width: 45%;
-        border: solid #313244;
-        background: #181825;
+        border: solid #737994;
+        background: #232326;
     }
 
     #detail-panel {
         width: 55%;
-        border: solid #313244;
-        background: #1e1e2e;
+        border: solid #737994;
+        background: #232326;
         padding: 1 2;
     }
 
     #detail-title {
         text-style: bold;
-        color: #89b4fa;
+        color: #57a5e5;
     }
 
     #detail-version {
-        color: #a6adc8;
+        color: #737994;
     }
 
     #detail-body {
-        color: #cdd6f4;
+        color: #a7aab0;
         margin-top: 1;
     }
 
     #status-bar {
         height: 1;
-        background: #313244;
-        color: #a6adc8;
+        background: #232326;
+        color: #737994;
         padding: 0 2;
+        border-top: solid #737994;
     }
 
     ListView {
-        background: #181825;
-        scrollbar-background: #11111b;
-        scrollbar-color: #89b4fa;
+        background: #232326;
+        scrollbar-background: #2c2d31;
+        scrollbar-color: #57a5e5;
     }
 
     ListView > ListItem.--highlight {
-        background: #45475a;
+        background: #35363b;
     }
 
     ListItem.installed {
-        color: #f9e2af;
+        color: #e5c07b;
     }
 
     #confirm-box {
         width: 72;
         height: auto;
         max-height: 80%;
-        background: #1e1e2e;
-        border: thick #89b4fa;
+        background: #35363b;
+        border: thick #51a8b3;
         padding: 1 2;
         margin: 2 4;
     }
 
     #diff {
         height: 10;
-        border: solid #313244;
+        border: solid #737994;
         margin: 1 0;
-        background: #11111b;
+        background: #2c2d31;
     }
 
     #help-box {
         width: 60;
-        background: #1e1e2e;
-        border: thick #cba6f7;
+        background: #35363b;
+        border: thick #57a5e5;
         padding: 1 2;
         margin: 2 4;
+    }
+
+    /* Mode superfile : fond du terminal visible (Kitty background_opacity, etc.) */
+    Screen.transparent {
+        background: transparent;
+    }
+
+    Screen.transparent Header {
+        background: transparent;
+        border-bottom: solid #73799455;
+    }
+
+    Screen.transparent Footer {
+        background: transparent;
+        border-top: solid #73799455;
+    }
+
+    Screen.transparent #search {
+        background: #23232666;
+        border: tall #73799488;
+    }
+
+    Screen.transparent #search:focus {
+        border: tall #57a5e5cc;
+        background: #23232699;
+    }
+
+    Screen.transparent #results-panel {
+        background: #23232655;
+        border: solid #73799466;
+    }
+
+    Screen.transparent #detail-panel {
+        background: #23232644;
+        border: solid #73799466;
+    }
+
+    Screen.transparent #status-bar {
+        background: #23232666;
+        border-top: solid #73799455;
+    }
+
+    Screen.transparent ListView {
+        background: transparent;
+    }
+
+    Screen.transparent ListView > ListItem.--highlight {
+        background: #57a5e533;
+    }
+
+    Screen.transparent #confirm-box {
+        background: #35363bee;
+        border: thick #51a8b3;
+    }
+
+    Screen.transparent #help-box {
+        background: #35363bee;
     }
     """
 
@@ -205,14 +295,23 @@ class NixPickApp(App[None]):
         Binding("k", "cursor_up", "Haut", show=False),
         Binding("r", "refresh_index", "Index"),
         Binding("d", "toggle_dry_run", "Simulation"),
+        Binding("t", "toggle_transparent", "Transparence"),
         Binding("question_mark", "help", "Aide"),
         Binding("enter", "install", "Ajouter"),
     ]
 
-    def __init__(self, refresh: bool = False, dry_run: bool = False) -> None:
+    def __init__(
+        self,
+        refresh: bool = False,
+        dry_run: bool = False,
+        transparent: bool | None = None,
+    ) -> None:
         super().__init__()
         self._refresh_on_start = refresh
         self._dry_run = dry_run
+        self._transparent = (
+            transparent if transparent is not None else load_transparent_background()
+        )
         self._index: dict = {}
         self._installed: set[str] = set()
         self._rows: list[ResultRow] = []
@@ -239,13 +338,21 @@ class NixPickApp(App[None]):
     def _status_text(self) -> str:
         age = index_age_days()
         age_s = f"index · {age:.0f} j" if age is not None else "index · …"
-        mode = " · [SIMULATION]" if self._dry_run else ""
-        return f"{age_s}{mode} · ? aide · r reconstruire l'index · d simulation"
+        mode = " · SIMULATION" if self._dry_run else ""
+        trans = " · fond transparent" if self._transparent else ""
+        return f"{age_s}{mode}{trans} · t transparence · ? aide"
 
     def on_mount(self) -> None:
         self._installed = list_installed_attrs()
+        self._apply_transparent_class()
         self.query_one("#search", Input).focus()
         self._load_index_worker()
+
+    def _apply_transparent_class(self) -> None:
+        if self._transparent:
+            self.screen.add_class("transparent")
+        else:
+            self.screen.remove_class("transparent")
 
     @work(thread=True, group="index", exclusive=True)
     def _load_index_worker(self) -> None:
@@ -401,6 +508,20 @@ class NixPickApp(App[None]):
         state = "activé" if self._dry_run else "désactivé"
         self.notify(f"Mode simulation {state}.")
 
+    def action_toggle_transparent(self) -> None:
+        self._transparent = not self._transparent
+        save_transparent_background(self._transparent)
+        self._apply_transparent_class()
+        self.query_one("#status-bar", Label).update(self._status_text())
+        if self._transparent:
+            self.notify(
+                "Fond transparent activé (comme superfile). "
+                "Il faut un terminal avec opacité (Kitty…).",
+                timeout=4,
+            )
+        else:
+            self.notify("Fond opaque.", timeout=2)
+
     def action_help(self) -> None:
         self.push_screen(HelpModal())
 
@@ -442,9 +563,15 @@ class NixPickApp(App[None]):
         self._schedule_search(self.query_one("#search", Input).value)
 
 
-def run_tui(refresh: bool = False, dry_run: bool = False) -> int:
+def run_tui(
+    refresh: bool = False,
+    dry_run: bool = False,
+    transparent: bool | None = None,
+) -> int:
     try:
-        NixPickApp(refresh=refresh, dry_run=dry_run).run()
+        NixPickApp(
+            refresh=refresh, dry_run=dry_run, transparent=transparent
+        ).run()
     except KeyboardInterrupt:
         return 130
     return 0
