@@ -245,9 +245,9 @@ class NixPickApp(App[None]):
     def on_mount(self) -> None:
         self._installed = list_installed_attrs()
         self.query_one("#search", Input).focus()
-        self.run_worker(self._load_index_worker, thread=True, exclusive=True)
+        self._load_index_worker()
 
-    @work(thread=True, group="index")
+    @work(thread=True, group="index", exclusive=True)
     def _load_index_worker(self) -> None:
         try:
             index = load_index(
@@ -276,10 +276,10 @@ class NixPickApp(App[None]):
     def _schedule_search(self, query: str) -> None:
         self._search_generation += 1
         gen = self._search_generation
+        # Textual 8 : run_worker(work, name=..., group=...) — pas de *args pour work.
+        # On encapsule query/gen dans une closure.
         self.run_worker(
-            self._search_worker,
-            query,
-            gen,
+            lambda: self._search_worker(query, gen),
             thread=True,
             exclusive=True,
             group="search",
@@ -380,9 +380,9 @@ class NixPickApp(App[None]):
 
     def action_refresh_index(self) -> None:
         self.notify("Reconstruction de l'index…", timeout=2)
-        self.run_worker(self._refresh_index_worker, thread=True, exclusive=True)
+        self._refresh_index_worker()
 
-    @work(thread=True, group="index")
+    @work(thread=True, group="index", exclusive=True)
     def _refresh_index_worker(self) -> None:
         try:
             index = load_index(refresh=True, on_status=lambda m: self.call_from_thread(
