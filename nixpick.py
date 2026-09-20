@@ -18,7 +18,7 @@ import sys
 
 from cli import run_cli, run_cli_remove
 from config import __version__, get_settings
-from engine import build_index
+from engine import build_index, list_installed_attrs
 from rofi_mode import run_rofi
 from tui import run_tui
 
@@ -83,13 +83,24 @@ def main() -> int:
         action="store_true",
         help="retire un paquet de environment.systemPackages (avec le terme CLI)",
     )
+    parser.add_argument(
+        "--list-installed",
+        action="store_true",
+        help="liste les attributs déjà présents dans environment.systemPackages",
+    )
     args = parser.parse_args()
 
     if args.print_config:
         s = get_settings()
         print(f"packages_file={s.packages_file}")
+        print(f"packages_file_resolved={s.packages_file.resolve()}")
         print(f"packages_anchor={s.packages_anchor}")
         print(f"rebuild_command={s.rebuild_command}")
+        return 0
+
+    if args.list_installed:
+        for attr in sorted(list_installed_attrs()):
+            print(attr)
         return 0
 
     if args.build_index_only:

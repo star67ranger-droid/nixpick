@@ -79,6 +79,7 @@ nixpick --print-config
 | `nixpick --dry-run` | Simulation (aucune écriture) |
 | `nixpick --refresh` | Reconstruit l’index nixpkgs au démarrage |
 | `nixpick --build-index-only` | Index seulement, puis quitte |
+| `nixpick --list-installed` | Attributs déjà dans `systemPackages` (une ligne par attr) |
 | `nixpick --transparent` / `--opaque` | Fond TUI (ANSI / Kitty) |
 
 ### TUI — raccourcis

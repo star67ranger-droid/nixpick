@@ -14,6 +14,10 @@
         version = "0.1.0";
         pyproject = true;
         src = ./.;
+        nativeBuildInputs = with pkgs.python3Packages; [
+          setuptools
+          wheel
+        ];
         propagatedBuildInputs = with pkgs.python3Packages; [
           textual
           rich

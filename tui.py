@@ -768,6 +768,19 @@ class NixPickApp(App[None]):
         self._last_search_query = query.strip()
         self._rows = rows
         self._rebuild_list(query)
+        self._prefetch_descriptions(rows)
+
+    def _prefetch_descriptions(self, rows: list[ResultRow]) -> None:
+        attrs = [r.attr for r in rows[:12] if not r.description]
+        attrs = [a for a in attrs if not self._desc_cache.get(a)]
+        if not attrs:
+            return
+        self.run_worker(
+            lambda: self._desc_cache.fetch_many(attrs),
+            thread=True,
+            exclusive=True,
+            group="desc-batch",
+        )
 
     def _rebuild_list(self, query: str | None = None) -> None:
         if query is None:

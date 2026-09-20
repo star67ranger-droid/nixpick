@@ -37,13 +37,21 @@ def packages_nix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
+def _index(rows: list[PackageRow]) -> PackageIndex:
+    by_leading: dict[str, list[PackageRow]] = {}
+    for row in rows:
+        for ch in {row.attr_lc[:1], row.pname_lc[:1]} - {""}:
+            by_leading.setdefault(ch, []).append(row)
+    return PackageIndex(rows=rows, by_leading=by_leading)
+
+
 def test_search_index_prefix_and_exact() -> None:
     rows = [
         PackageRow("firefox", "1", "firefox", "firefox"),
         PackageRow("firefox-esr", "1", "firefox-esr", "firefox-esr"),
         PackageRow("vim", "9", "vim", "vim"),
     ]
-    index = PackageIndex(rows=rows)
+    index = _index(rows)
     hits = search_index(index, "firefox", limit=10)
     assert hits[0][0] == "firefox"
     assert any(a == "firefox-esr" for a, _ in hits)

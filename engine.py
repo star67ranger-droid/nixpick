@@ -110,6 +110,7 @@ class PackageIndex:
     """Liste compacte pour parcourir l'index sans dict ni .lower() à chaque frappe."""
 
     rows: list[PackageRow]
+    by_leading: dict[str, list[PackageRow]]
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -117,17 +118,32 @@ class PackageIndex:
     @classmethod
     def from_dict(cls, index: dict) -> PackageIndex:
         rows: list[PackageRow] = []
+        by_leading: dict[str, list[PackageRow]] = {}
         for key, pkg in index.items():
             attr = attr_name(key)
-            rows.append(
-                PackageRow(
-                    attr=attr,
-                    version=pkg.get("version", ""),
-                    attr_lc=attr.lower(),
-                    pname_lc=(pkg.get("pname") or "").lower(),
-                )
+            row = PackageRow(
+                attr=attr,
+                version=pkg.get("version", ""),
+                attr_lc=attr.lower(),
+                pname_lc=(pkg.get("pname") or "").lower(),
             )
-        return cls(rows)
+            rows.append(row)
+            for ch in {row.attr_lc[:1], row.pname_lc[:1]} - {""}:
+                by_leading.setdefault(ch, []).append(row)
+        return cls(rows=rows, by_leading=by_leading)
+
+    def candidates_for(self, needle: str) -> tuple[list[PackageRow], set[str]]:
+        """Réduit le scan pour les requêtes ≥ 2 caractères (première lettre attr/pname)."""
+        ch = needle[0]
+        pool = self.by_leading.get(ch, [])
+        seen: set[str] = set()
+        out: list[PackageRow] = []
+        for row in pool:
+            if row.attr in seen:
+                continue
+            seen.add(row.attr)
+            out.append(row)
+        return out, seen
 
 
 def search(
@@ -155,17 +171,28 @@ def search_index(
 
     results: list[tuple[int, int, str, str]] = []
 
-    for row in index.rows:
+    def score_row(row: PackageRow) -> int | None:
         if row.attr_lc == needle or row.pname_lc == needle:
-            score = 100
-        elif row.attr_lc.startswith(needle) or row.pname_lc.startswith(needle):
-            score = 70
-        elif needle in row.attr_lc or needle in row.pname_lc:
-            score = 40
-        else:
-            continue
+            return 100
+        if row.attr_lc.startswith(needle) or row.pname_lc.startswith(needle):
+            return 70
+        if needle in row.attr_lc or needle in row.pname_lc:
+            return 40
+        return None
 
-        results.append((-score, len(row.attr), row.attr, row.version))
+    primary, seen = index.candidates_for(needle)
+    for row in primary:
+        score = score_row(row)
+        if score is not None:
+            results.append((-score, len(row.attr), row.attr, row.version))
+
+    if len(results) < limit:
+        for row in index.rows:
+            if row.attr in seen:
+                continue
+            score = score_row(row)
+            if score is not None:
+                results.append((-score, len(row.attr), row.attr, row.version))
 
     results.sort()
     return [(attr, version) for _, _, attr, version in results[:limit]]
@@ -207,6 +234,24 @@ class DescriptionCache:
         if desc:
             self.remember(attr, desc)
         return desc
+
+    def remember_many(self, data: dict[str, str]) -> None:
+        changed = False
+        for attr, description in data.items():
+            if not description or self._data.get(attr) == description:
+                continue
+            self._data[attr] = description
+            changed = True
+        if changed:
+            self._persist()
+
+    def fetch_many(self, attrs: list[str]) -> dict[str, str]:
+        missing = [a for a in attrs if self.get(a) is None]
+        if not missing:
+            return {a: self.get(a) or "" for a in attrs}
+        fetched = fetch_descriptions(missing)
+        self.remember_many(fetched)
+        return {a: self.get(a) or fetched.get(a, "") or "" for a in attrs}
 
 
 def fetch_descriptions(attrs: list[str]) -> dict[str, str]:
