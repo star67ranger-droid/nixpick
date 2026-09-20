@@ -1,0 +1,8 @@
+# Copier vers ~/.config/nixpick/config.toml et adapter.
+
+packages_file = "/etc/nixos/modules/packages.nix"
+packages_anchor = "environment.systemPackages"
+rebuild_command = "sudo nixos-rebuild switch --flake /etc/nixos#nixos"
+
+# TUI : fond transparent (terminal ANSI, ex. Kitty background_opacity)
+transparent_background = false

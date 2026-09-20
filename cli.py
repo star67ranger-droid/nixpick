@@ -8,11 +8,14 @@ from engine import (
     DEFAULT_RESULT_LIMIT,
     AddFailure,
     NixCommandError,
-    REBUILD_CMD,
+    rebuild_command,
+    RemoveFailure,
     commit_add,
+    commit_remove,
     fetch_descriptions,
     load_index,
     plan_add,
+    plan_remove,
     search,
 )
 
@@ -28,6 +31,47 @@ BOLD, DIM, GREEN, YELLOW, RED, RESET = (
 
 def say(msg: str = "") -> None:
     print(msg, file=sys.stderr)
+
+
+def run_cli_remove(term: str, dry_run: bool) -> int:
+    plan = plan_remove(term.strip())
+    if isinstance(plan, RemoveFailure):
+        say(f"{YELLOW}{plan.message}{RESET}")
+        return 0 if plan.outcome.name == "NOT_LISTED" else 1
+
+    say()
+    say(f"{BOLD}Suppression prévue dans {plan.packages_file} :{RESET}")
+    for line in plan.context_lines:
+        prefix = RED if line.startswith("-") else DIM
+        say(f"  {prefix}{line}{RESET}")
+
+    if dry_run:
+        say(f"\n{DIM}Mode --dry-run : rien n'écrit.{RESET}")
+        return 0
+
+    try:
+        answer = input("\nJe retire ? [o/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        say()
+        return 1
+    if answer not in ("o", "oui", "y"):
+        say("Abandonné.")
+        return 0
+
+    try:
+        commit_remove(plan, dry_run=False)
+    except PermissionError:
+        say(f"{RED}Pas les droits d'écriture sur {plan.packages_file}.{RESET}")
+        return 1
+    except LookupError as err:
+        say(f"{RED}{err}{RESET}")
+        return 1
+
+    say(f"{GREEN}Retiré.{RESET} Sauvegarde : {plan.backup_path}")
+    say()
+    say(f"{BOLD}Pour appliquer :{RESET}")
+    say(f"  {rebuild_command()}")
+    return 0
 
 
 def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
@@ -96,5 +140,5 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
     say(f"{GREEN}Ajouté.{RESET} Sauvegarde : {plan.backup_path}")
     say()
     say(f"{BOLD}Pour appliquer :{RESET}")
-    say(f"  {REBUILD_CMD}")
+    say(f"  {rebuild_command()}")
     return 0

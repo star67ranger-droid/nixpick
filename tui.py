@@ -8,25 +8,31 @@ from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.events import Key
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label, OptionList, RichLog, Static
+from textual.widgets import Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from config import load_transparent_background, save_transparent_background
 from engine import (
     AddFailure,
     AddPlan,
+    DescriptionCache,
     NixCommandError,
-    REBUILD_CMD,
+    PackageIndex,
+    rebuild_command,
+    RemoveFailure,
+    RemovePlan,
     TUI_RESULT_LIMIT,
     commit_add,
-    fetch_descriptions,
+    commit_remove,
     index_age_days,
     list_installed_attrs,
     load_index,
     plan_add,
-    search,
+    plan_remove,
+    search_index,
 )
 
 
@@ -40,7 +46,110 @@ class ResultRow:
 # ─── Modales ─────────────────────────────────────────────────────────────────
 
 
+def _ellipsis(text: str, max_len: int = 68) -> str:
+    text = text.strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
+def _format_diff_markup(context_lines: list[str]) -> str:
+    rows: list[str] = []
+    for raw in context_lines:
+        line = raw.rstrip()
+        if line.startswith("+"):
+            body = line[1:].strip()
+            if "#" in body:
+                attr, comment = body.split("#", 1)
+                attr = attr.strip()
+                comment = _ellipsis(comment.strip(), 52)
+                rows.append(
+                    f"[bold green]+[/] [bold]{attr}[/]  [dim]# {comment}[/]"
+                )
+            else:
+                rows.append(f"[bold green]+[/] [bold]{_ellipsis(body)}[/]")
+        else:
+            rows.append(f"[dim]  {_ellipsis(line.strip())}[/]")
+    return "\n".join(rows)
+
+
 class ConfirmAddModal(ModalScreen[bool]):
+    """Modale de confirmation type lazygit : centrée, aperçu court, actions explicites."""
+
+    CSS = """
+    ConfirmAddModal {
+        align: center middle;
+    }
+
+    #confirm-box {
+        width: 78;
+        background: #35363b;
+        border: round #51a8b3;
+        padding: 1 2;
+    }
+
+    #modal-title {
+        color: #a7aab0;
+        margin-bottom: 0;
+    }
+
+    #modal-attr {
+        text-style: bold;
+        color: #57a5e5;
+        margin-top: 1;
+    }
+
+    #modal-path {
+        color: #737994;
+    }
+
+    #modal-desc {
+        color: #a7aab0;
+        margin: 1 0 0 0;
+    }
+
+    #modal-badge {
+        color: #e5c07b;
+        margin-top: 1;
+    }
+
+    #diff-panel {
+        height: auto;
+        max-height: 10;
+        margin: 1 0;
+        padding: 0 1 1 1;
+        background: #2c2d31;
+        border: round #737994;
+        border-title-color: #dbb671;
+        border-title-align: left;
+    }
+
+    #diff {
+        width: 1fr;
+        height: auto;
+    }
+
+    #modal-actions {
+        height: 1;
+        margin-top: 1;
+        color: #737994;
+    }
+
+    ConfirmAddModal.transparent {
+        background: ansi_default;
+    }
+
+    ConfirmAddModal.transparent #confirm-box {
+        background: ansi_default;
+        border: round #737994;
+    }
+
+    ConfirmAddModal.transparent #diff-panel {
+        background: ansi_default;
+        border: round #737994;
+    }
+    """
+
     BINDINGS = [
         Binding("y", "confirm", "Oui"),
         Binding("n", "dismiss", "Non"),
@@ -48,32 +157,166 @@ class ConfirmAddModal(ModalScreen[bool]):
         Binding("enter", "confirm", "Oui", show=False),
     ]
 
-    def __init__(self, plan: AddPlan, dry_run: bool) -> None:
+    def __init__(self, plan: AddPlan, dry_run: bool, transparent: bool = False) -> None:
         super().__init__()
         self._plan = plan
         self._dry_run = dry_run
-
-    def compose(self) -> ComposeResult:
-        kind = "simulation" if self._dry_run else "écrire dans la config"
-        yield Vertical(
-            Static(f"[b]Ajouter {self._plan.attr}[/]  [dim]· {kind}[/]", id="modal-title"),
-            Static(f"[dim]{self._plan.packages_file}[/]"),
-            RichLog(id="diff", markup=True, highlight=False),
-            Static(
-                "[b]y[/] / [b]↵[/]  confirmer    [b]n[/] / [b]esc[/]  annuler"
-                + ("    [yellow]aucun fichier ne sera touché[/]" if self._dry_run else ""),
-                id="modal-keys",
-            ),
-            id="confirm-box",
-        )
+        self._transparent = transparent
 
     def on_mount(self) -> None:
-        log = self.query_one("#diff", RichLog)
-        for line in self._plan.context_lines:
-            if line.startswith("+"):
-                log.write(f"[green]{line}[/]")
+        if self._transparent:
+            self.add_class("transparent")
+
+    def compose(self) -> ComposeResult:
+        desc = _ellipsis(self._plan.description, 90) if self._plan.description else ""
+        diff = _format_diff_markup(self._plan.context_lines)
+        mode = (
+            "[yellow]simulation[/] — le fichier ne sera pas modifié"
+            if self._dry_run
+            else "[dim]écriture dans[/] [bold]environment.systemPackages[/]"
+        )
+
+        with Vertical(id="confirm-box"):
+            yield Static("Confirmer l'ajout", id="modal-title")
+            yield Static(self._plan.attr, id="modal-attr")
+            yield Static(str(self._plan.packages_file), id="modal-path")
+            yield Static(mode, id="modal-badge")
+            if desc:
+                yield Static(desc, id="modal-desc")
+            with Vertical(id="diff-panel") as panel:
+                panel.border_title = " aperçu "
+                yield Static(diff, id="diff")
+            yield Static(
+                "[bold #8fb573]y[/] ou [bold #8fb573]↵[/]  confirmer     "
+                "[bold #e06c75]n[/] ou [bold #e06c75]esc[/]  annuler",
+                id="modal-actions",
+            )
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_dismiss(self) -> None:
+        self.dismiss(False)
+
+
+class ConfirmRemoveModal(ModalScreen[bool]):
+    """Retirer une entrée de environment.systemPackages."""
+
+    CSS = """
+    ConfirmRemoveModal {
+        align: center middle;
+    }
+
+    #confirm-box {
+        width: 78;
+        background: #35363b;
+        border: round #e06c75;
+        padding: 1 2;
+    }
+
+    #modal-title {
+        color: #e06c75;
+        margin-bottom: 0;
+    }
+
+    #modal-attr {
+        text-style: bold;
+        color: #57a5e5;
+        margin-top: 1;
+    }
+
+    #modal-path {
+        color: #737994;
+    }
+
+    #modal-badge {
+        color: #e5c07b;
+        margin-top: 1;
+    }
+
+    #diff-panel {
+        height: auto;
+        max-height: 10;
+        margin: 1 0;
+        padding: 0 1 1 1;
+        background: #2c2d31;
+        border: round #737994;
+        border-title-color: #e06c75;
+        border-title-align: left;
+    }
+
+    #diff {
+        width: 1fr;
+        height: auto;
+    }
+
+    #modal-actions {
+        height: 1;
+        margin-top: 1;
+        color: #737994;
+    }
+
+    ConfirmRemoveModal.transparent {
+        background: ansi_default;
+    }
+
+    ConfirmRemoveModal.transparent #confirm-box {
+        background: ansi_default;
+        border: round #e06c75;
+    }
+
+    ConfirmRemoveModal.transparent #diff-panel {
+        background: ansi_default;
+        border: round #737994;
+    }
+    """
+
+    BINDINGS = [
+        Binding("y", "confirm", "Oui"),
+        Binding("n", "dismiss", "Non"),
+        Binding("escape", "dismiss", "Non"),
+        Binding("enter", "confirm", "Oui", show=False),
+    ]
+
+    def __init__(self, plan: RemovePlan, dry_run: bool, transparent: bool = False) -> None:
+        super().__init__()
+        self._plan = plan
+        self._dry_run = dry_run
+        self._transparent = transparent
+
+    def on_mount(self) -> None:
+        if self._transparent:
+            self.add_class("transparent")
+
+    def compose(self) -> ComposeResult:
+        diff_lines = []
+        for raw in self._plan.context_lines:
+            line = raw.rstrip()
+            if line.startswith("-"):
+                body = line[1:].strip()
+                diff_lines.append(f"[bold red]-[/] [bold]{_ellipsis(body)}[/]")
             else:
-                log.write(f"[dim]  {line}[/]")
+                diff_lines.append(f"[dim]  {_ellipsis(line.strip())}[/]")
+        diff = "\n".join(diff_lines)
+        mode = (
+            "[yellow]simulation[/] — le fichier ne sera pas modifié"
+            if self._dry_run
+            else "[dim]suppression dans[/] [bold]environment.systemPackages[/]"
+        )
+
+        with Vertical(id="confirm-box"):
+            yield Static("Retirer de la config", id="modal-title")
+            yield Static(self._plan.attr, id="modal-attr")
+            yield Static(str(self._plan.packages_file), id="modal-path")
+            yield Static(mode, id="modal-badge")
+            with Vertical(id="diff-panel") as panel:
+                panel.border_title = " aperçu "
+                yield Static(diff, id="diff")
+            yield Static(
+                "[bold #8fb573]y[/] ou [bold #8fb573]↵[/]  confirmer     "
+                "[bold #e06c75]n[/] ou [bold #e06c75]esc[/]  annuler",
+                id="modal-actions",
+            )
 
     def action_confirm(self) -> None:
         self.dismiss(True)
@@ -95,19 +338,23 @@ class HelpModal(ModalScreen[None]):
   [b #51a8b3]taper[/]              cherche tout de suite (comme fzf)
   [b #51a8b3]↑ ↓[/]                navigue sans quitter la recherche
   [b #51a8b3]↵[/]                  ajouter le paquet surligné
+  [b #51a8b3]x[/]                  retirer (si ● déjà dans packages.nix)
+  [b #51a8b3]l[/]                  catalogue des paquets déjà dans la config
   [b #51a8b3]tab[/]                aller à la liste / revenir à la recherche
   [b #51a8b3]esc[/]                vider la recherche, puis quitter
   [b #51a8b3]j k[/]                naviguer (quand la liste a le focus)
   [b #51a8b3]F1[/] / [b #51a8b3]?[/]        aide
   [b #51a8b3]ctrl+r[/]            reconstruire l'index
-  [b #51a8b3]r[/]                  idem (hors barre de recherche)
-  [b #51a8b3]i[/]                  masquer les paquets déjà dans la config
-  [b #51a8b3]d[/]                  mode simulation
-  [b #51a8b3]t[/]                  fond transparent
+  [b #51a8b3]i[/] / [b #51a8b3]ctrl+i[/]   masquer les paquets déjà dans la config
+  [b #51a8b3]d[/] / [b #51a8b3]ctrl+d[/]   mode simulation
+  [b #51a8b3]t[/] / [b #51a8b3]ctrl+t[/]   fond transparent
   [b #51a8b3]q[/]                  quitter
 
-[dim]Le fond transparent ne marche que si le terminal a une opacité
-(Kitty background_opacity, etc.). Un nixos-rebuild n'est jamais lancé seul.[/]
+[dim]Transparence réelle = mode ANSI (comme superfile) + Kitty :
+dans ~/.config/kitty/kitty.conf → background_opacity 0.85
+Puis Ctrl+T ou t. Si ça reste opaque, ton shell/peste peint un fond
+couleur : seul le fond « par défaut » du terminal devient transparent.
+Un nixos-rebuild n'est jamais lancé seul.[/]
 """
 
     def compose(self) -> ComposeResult:
@@ -221,24 +468,6 @@ class NixPickApp(App[None]):
         color: #51a8b3;
     }
 
-    #confirm-box {
-        width: 74;
-        background: #35363b;
-        border: round #51a8b3;
-        padding: 1 2;
-        margin: 2 4;
-    }
-
-    #modal-title { color: #a7aab0; margin-bottom: 0; }
-    #modal-keys { color: #737994; margin-top: 1; }
-
-    #diff {
-        height: 8;
-        margin: 1 0;
-        background: #2c2d31;
-        border: round #737994;
-    }
-
     #help-box {
         width: 64;
         background: #35363b;
@@ -247,33 +476,47 @@ class NixPickApp(App[None]):
         margin: 2 4;
     }
 
-    Screen.transparent { background: transparent; }
-    Screen.transparent #chrome { background: transparent; }
-    Screen.transparent #search-row { background: transparent; }
-    Screen.transparent #search-icon { background: transparent; }
+    /* Textual en truecolor : l'alpha RGB ne laisse pas voir le bureau Kitty.
+       Il faut ansi_default + App(ansi_color=True) — voir FAQ Textual. */
+    Screen.transparent {
+        background: ansi_default;
+    }
+    Screen.transparent #chrome,
+    Screen.transparent #search-row,
+    Screen.transparent #search-icon,
+    Screen.transparent #footerbar,
+    Screen.transparent #main {
+        background: ansi_default;
+    }
     Screen.transparent #search {
-        background: #23232655;
-        border: round #73799488;
+        background: ansi_default;
+        border: round #737994;
     }
     Screen.transparent #search:focus {
-        border: round #57a5e5cc;
-        background: #23232688;
+        border: round #57a5e5;
     }
     Screen.transparent #results {
-        background: #23232644;
-        border: round #73799466;
+        background: ansi_default;
+        border: round #737994;
+        scrollbar-background: ansi_default;
+        scrollbar-background-hover: ansi_default;
+        scrollbar-background-active: ansi_default;
     }
     Screen.transparent #detail-panel {
-        background: #23232633;
-        border: round #73799466;
+        background: ansi_default;
+        border: round #737994;
+    }
+    Screen.transparent OptionList {
+        background: ansi_default;
     }
     Screen.transparent OptionList > .option-list--option-highlighted {
-        background: #57a5e528;
+        background: ansi_default;
+        color: #51a8b3;
+        text-style: bold;
     }
-    Screen.transparent #footerbar { background: transparent; }
-    Screen.transparent #confirm-box { background: #35363bee; }
-    Screen.transparent #help-box { background: #35363bee; }
-    Screen.transparent #diff { background: #2c2d3188; }
+    Screen.transparent #help-box {
+        background: ansi_default;
+    }
     """
 
     BINDINGS = [
@@ -289,12 +532,32 @@ class NixPickApp(App[None]):
         Binding("enter", "install", "Ajouter", show=False, priority=True),
         Binding("f1", "help", show=False, priority=True),
         Binding("ctrl+r", "refresh_index", show=False, priority=True),
-        Binding("r", "refresh_index", show=False),
-        Binding("d", "toggle_dry_run", show=False),
-        Binding("t", "toggle_transparent", show=False),
-        Binding("i", "toggle_hide_installed", show=False),
-        Binding("question_mark", "help", show=False),
+        Binding("ctrl+t", "toggle_transparent", show=False, priority=True),
+        Binding("ctrl+d", "toggle_dry_run", show=False, priority=True),
+        Binding("ctrl+i", "toggle_hide_installed", show=False, priority=True),
+        Binding("ctrl+l", "toggle_installed_catalog", show=False, priority=True),
+        Binding("x", "remove", "Retirer", show=False, priority=True),
+        Binding("ctrl+x", "remove", show=False, priority=True),
+        Binding("delete", "remove", show=False, priority=True),
     ]
+
+    _SHORTCUT_KEYS = frozenset({"d", "t", "i", "l"})
+    _MODIFIER_ONLY_KEYS = frozenset(
+        {
+            "left_control",
+            "right_control",
+            "left_alt",
+            "right_alt",
+            "left_shift",
+            "right_shift",
+            "left_meta",
+            "right_meta",
+            "shift",
+            "control",
+            "alt",
+            "meta",
+        }
+    )
 
     def __init__(
         self,
@@ -302,20 +565,25 @@ class NixPickApp(App[None]):
         dry_run: bool = False,
         transparent: bool | None = None,
     ) -> None:
-        super().__init__()
-        self._refresh_on_start = refresh
-        self._dry_run = dry_run
         self._transparent = (
             transparent if transparent is not None else load_transparent_background()
         )
+        super().__init__(ansi_color=self._transparent)
+        self._refresh_on_start = refresh
+        self._dry_run = dry_run
         self._hide_installed = False
-        self._index: dict = {}
+        self._installed_catalog = False
+        self._pkg_index: PackageIndex | None = None
+        self._version_by_attr: dict[str, str] = {}
+        self._desc_cache = DescriptionCache()
         self._installed: set[str] = set()
         self._rows: list[ResultRow] = []
         self._visible: list[ResultRow] = []
         self._search_timer = None
         self._desc_timer = None
         self._search_generation = 0
+        self._desc_generation = 0
+        self._last_search_query = ""
         self._loading = True
 
     def compose(self) -> ComposeResult:
@@ -346,11 +614,33 @@ class NixPickApp(App[None]):
         self.query_one("#search", Input).focus()
         self._load_index_worker()
 
+    def on_key(self, event: Key) -> None:
+        """d / t / i / ? même quand la recherche a le focus (sinon elles s'écrivent dans l'input)."""
+        if len(self.screen_stack) > 1:
+            return
+        key = event.key
+        if key in self._MODIFIER_ONLY_KEYS or "+" in key:
+            return
+        if key in self._SHORTCUT_KEYS:
+            {
+                "d": self.action_toggle_dry_run,
+                "t": self.action_toggle_transparent,
+                "i": self.action_toggle_hide_installed,
+                "l": self.action_toggle_installed_catalog,
+            }[key]()
+            event.prevent_default()
+            event.stop()
+            return
+        if key == "question_mark" or event.character == "?":
+            self.action_help()
+            event.prevent_default()
+            event.stop()
+
     # ── chrome ───────────────────────────────────────────────────────────────
 
     def _paint_chrome(self) -> None:
         age = index_age_days()
-        n = len(self._index)
+        n = len(self._pkg_index) if self._pkg_index else 0
         count = f"{n // 1000}k paquets" if n >= 1000 else (f"{n} paquets" if n else "index…")
         age_s = f" · {age:.0f} j" if age is not None and not self._loading else ""
         flags = []
@@ -360,6 +650,8 @@ class NixPickApp(App[None]):
             flags.append("transp.")
         if self._hide_installed:
             flags.append("sans installés")
+        if self._installed_catalog:
+            flags.append("catalogue config")
         flag_s = ("  " + " · ".join(flags)) if flags else ""
 
         shown = len(self._visible)
@@ -381,17 +673,20 @@ class NixPickApp(App[None]):
         self.query_one("#footerbar", Static).update(
             Text.from_markup(
                 "[b #51a8b3]↵[/] ajouter   "
+                "[b #51a8b3]x[/] retirer   "
+                "[b #51a8b3]l[/] config   "
                 "[b #51a8b3]↑↓[/] nav   "
-                "[b #51a8b3]i[/] installés   "
-                "[b #51a8b3]d[/] simu   "
-                "[b #51a8b3]t[/] fond   "
-                "[b #51a8b3]r[/] index   "
+                "[b #51a8b3]ctrl+i[/] masquer ●   "
+                "[b #51a8b3]ctrl+d[/] simu   "
+                "[b #51a8b3]ctrl+t[/] fond   "
+                "[b #51a8b3]ctrl+r[/] index   "
                 "[b #51a8b3]?[/] aide   "
                 "[b #51a8b3]q[/] quitter"
             )
         )
 
     def _apply_transparent_class(self) -> None:
+        self.ansi_color = self._transparent
         if self._transparent:
             self.screen.add_class("transparent")
         else:
@@ -402,11 +697,12 @@ class NixPickApp(App[None]):
     @work(thread=True, group="index", exclusive=True)
     def _load_index_worker(self) -> None:
         try:
-            index = load_index(
+            raw = load_index(
                 refresh=self._refresh_on_start,
                 on_status=lambda m: self.call_from_thread(self._set_loading, m),
             )
-            self.call_from_thread(self._on_index_ready, index)
+            pkg_index = PackageIndex.from_dict(raw)
+            self.call_from_thread(self._on_index_ready, pkg_index)
         except NixCommandError as err:
             self.call_from_thread(self.notify, str(err), severity="error")
 
@@ -416,12 +712,15 @@ class NixPickApp(App[None]):
             Text.from_markup(f"[b #57a5e5]nixpick[/]  [dim]{message}[/]")
         )
 
-    def _on_index_ready(self, index: dict) -> None:
-        self._index = index
+    def _on_index_ready(self, pkg_index: PackageIndex) -> None:
+        self._pkg_index = pkg_index
+        self._version_by_attr = {row.attr: row.version for row in pkg_index.rows}
         self._loading = False
         self._paint_chrome()
         q = self.query_one("#search", Input).value
-        if q.strip():
+        if self._installed_catalog and not q.strip():
+            self._rebuild_list()
+        elif len(q.strip()) >= 2:
             self._schedule_search(q)
 
     # ── recherche ────────────────────────────────────────────────────────────
@@ -431,9 +730,18 @@ class NixPickApp(App[None]):
         if self._search_timer is not None:
             self._search_timer.stop()
         query = event.value
-        self._search_timer = self.set_timer(0.12, lambda: self._schedule_search(query))
+        self._search_timer = self.set_timer(0.22, lambda: self._schedule_search(query))
 
     def _schedule_search(self, query: str) -> None:
+        q = query.strip()
+        if q == self._last_search_query:
+            return
+        if len(q) < 2:
+            self._search_generation += 1
+            self._last_search_query = q
+            self._rows = []
+            self._rebuild_list(query)
+            return
         self._search_generation += 1
         gen = self._search_generation
         self.run_worker(
@@ -444,15 +752,12 @@ class NixPickApp(App[None]):
         )
 
     def _search_worker(self, query: str, generation: int) -> None:
-        if not self._index:
+        if not self._pkg_index or generation != self._search_generation:
             return
-        results = search(self._index, query, limit=TUI_RESULT_LIMIT)
-        attrs = [a for a, _ in results[:24]]
-        descs = fetch_descriptions(attrs) if attrs else {}
-        rows = [
-            ResultRow(attr=a, version=v, description=descs.get(a, ""))
-            for a, v in results
-        ]
+        results = search_index(self._pkg_index, query, limit=TUI_RESULT_LIMIT)
+        if generation != self._search_generation:
+            return
+        rows = [ResultRow(attr=a, version=v) for a, v in results]
         self.call_from_thread(self._apply_results, rows, generation, query)
 
     def _apply_results(
@@ -460,6 +765,7 @@ class NixPickApp(App[None]):
     ) -> None:
         if generation != self._search_generation:
             return
+        self._last_search_query = query.strip()
         self._rows = rows
         self._rebuild_list(query)
 
@@ -468,11 +774,23 @@ class NixPickApp(App[None]):
             query = self.query_one("#search", Input).value
         ol = self.query_one("#results", OptionList)
 
-        if not query.strip():
+        q = query.strip()
+        if not q:
+            if self._installed_catalog:
+                self._fill_installed_catalog(ol)
+                return
             self._visible = []
             ol.clear_options()
             ol.border_title = " résultats "
             self._show_idle_detail()
+            self._paint_chrome()
+            return
+
+        if len(q) < 2:
+            self._visible = []
+            ol.clear_options()
+            ol.border_title = " résultats "
+            self._show_short_query_detail()
             self._paint_chrome()
             return
 
@@ -491,26 +809,42 @@ class NixPickApp(App[None]):
             self._paint_chrome()
             return
 
-        options: list[Option] = []
-        for i, row in enumerate(visible):
-            options.append(Option(self._format_option(row), id=str(i)))
-        ol.add_options(options)
+        ol.add_options(
+            [Option(self._format_option(row), id=str(i)) for i, row in enumerate(visible)]
+        )
         ol.highlighted = 0
         ol.border_title = f" résultats · {len(visible)} "
         self._show_detail(visible[0])
         self._paint_chrome()
 
-    def _format_option(self, row: ResultRow) -> Text:
+    def _format_option(self, row: ResultRow) -> str:
         installed = row.attr in self._installed
         mark = "●" if installed else " "
-        name = row.attr
-        ver = row.version or ""
-        t = Text()
-        t.append(f" {mark} ", style="yellow" if installed else "dim")
-        t.append(name, style="yellow" if installed else "")
-        if ver:
-            t.append(f"  {ver}", style="dim")
-        return t
+        ver = f"  {row.version}" if row.version else ""
+        return f" {mark} {row.attr}{ver}"
+
+    def _fill_installed_catalog(self, ol: OptionList) -> None:
+        attrs = sorted(self._installed)
+        rows = [
+            ResultRow(attr=a, version=self._version_by_attr.get(a, ""))
+            for a in attrs
+        ]
+        self._rows = rows
+        self._visible = rows
+        ol.clear_options()
+        if not rows:
+            ol.add_option(Option("[dim]aucun paquet dans packages.nix[/]", disabled=True))
+            ol.border_title = " config · 0 "
+            self._show_idle_detail()
+            self._paint_chrome()
+            return
+        ol.add_options(
+            [Option(self._format_option(row), id=str(i)) for i, row in enumerate(rows)]
+        )
+        ol.highlighted = 0
+        ol.border_title = f" config · {len(rows)} "
+        self._show_detail(rows[0])
+        self._paint_chrome()
 
     # ── détail ───────────────────────────────────────────────────────────────
 
@@ -520,6 +854,14 @@ class NixPickApp(App[None]):
         self.query_one("#detail-body", Static).update(
             "Tape un nom d'application.\n"
             "[dim]↑↓ pour parcourir · ↵ pour ajouter · ? pour l'aide[/]"
+        )
+        self.query_one("#detail-hint", Static).update("")
+
+    def _show_short_query_detail(self) -> None:
+        self.query_one("#detail-name", Label).update("…")
+        self.query_one("#detail-meta", Label).update("")
+        self.query_one("#detail-body", Static).update(
+            "[dim]Au moins 2 caractères pour lancer la recherche (évite de scanner tout nixpkgs).[/]"
         )
         self.query_one("#detail-hint", Static).update("")
 
@@ -537,11 +879,15 @@ class NixPickApp(App[None]):
         self.query_one("#detail-meta", Label).update(
             row.version + ("  ·  déjà dans la config" if installed else "")
         )
-        desc = row.description or "[dim]pas de description (chargement…)[/]"
+        cached = row.description or self._desc_cache.get(row.attr) or ""
+        if cached:
+            row.description = cached
+        desc = cached or "[dim]description…[/]"
         self.query_one("#detail-body", Static).update(desc)
         if installed:
             self.query_one("#detail-hint", Static).update(
-                "[yellow]déjà listé dans environment.systemPackages[/]"
+                "[yellow]déjà dans packages.nix[/]  ·  "
+                "[bold #e06c75]x[/] retirer  ·  [dim]↵ n'ajoute pas[/]"
             )
         elif self._dry_run:
             self.query_one("#detail-hint", Static).update(
@@ -555,22 +901,31 @@ class NixPickApp(App[None]):
             self._schedule_desc(row.attr)
 
     def _schedule_desc(self, attr: str) -> None:
+        if self._desc_cache.get(attr):
+            return
         if self._desc_timer is not None:
             self._desc_timer.stop()
-        self._desc_timer = self.set_timer(0.05, lambda: self._fetch_one_desc(attr))
+        self._desc_generation += 1
+        gen = self._desc_generation
+        self._desc_timer = self.set_timer(
+            0.35, lambda: self._fetch_one_desc(attr, gen)
+        )
 
-    def _fetch_one_desc(self, attr: str) -> None:
+    def _fetch_one_desc(self, attr: str, generation: int) -> None:
+        if generation != self._desc_generation:
+            return
         self.run_worker(
-            lambda: self._desc_worker(attr),
+            lambda: self._desc_worker(attr, generation),
             thread=True,
             exclusive=True,
             group="desc",
         )
 
-    def _desc_worker(self, attr: str) -> None:
-        descs = fetch_descriptions([attr])
-        text = descs.get(attr, "")
-        if text:
+    def _desc_worker(self, attr: str, generation: int) -> None:
+        if generation != self._desc_generation:
+            return
+        text = self._desc_cache.fetch_one(attr)
+        if text and generation == self._desc_generation:
             self.call_from_thread(self._apply_one_desc, attr, text)
 
     def _apply_one_desc(self, attr: str, text: str) -> None:
@@ -611,6 +966,12 @@ class NixPickApp(App[None]):
         if inp.value:
             inp.value = ""
             inp.focus()
+            self._rebuild_list()
+            return
+        if self._installed_catalog:
+            self._installed_catalog = False
+            self._rebuild_list()
+            inp.focus()
             return
         self.exit()
 
@@ -650,6 +1011,19 @@ class NixPickApp(App[None]):
         state = "masqués" if self._hide_installed else "affichés"
         self.notify(f"Paquets déjà installés {state}.", timeout=2)
 
+    def action_toggle_installed_catalog(self) -> None:
+        self._installed_catalog = not self._installed_catalog
+        if self._installed_catalog:
+            self.query_one("#search", Input).value = ""
+        self._rebuild_list()
+        if self._installed_catalog:
+            self.notify(
+                "Catalogue packages.nix — x pour retirer, esc pour quitter le mode.",
+                timeout=3,
+            )
+        else:
+            self.notify("Retour à la recherche nixpkgs.", timeout=2)
+
     def action_toggle_dry_run(self) -> None:
         self._dry_run = not self._dry_run
         self._paint_chrome()
@@ -663,10 +1037,13 @@ class NixPickApp(App[None]):
         save_transparent_background(self._transparent)
         self._apply_transparent_class()
         self._paint_chrome()
-        self.notify(
-            "Fond transparent." if self._transparent else "Fond opaque.",
-            timeout=2,
+        self.refresh()
+        hint = (
+            "Fond transparent (ANSI). Kitty : background_opacity dans kitty.conf."
+            if self._transparent
+            else "Fond opaque (thème couleur)."
         )
+        self.notify(hint, timeout=4)
 
     def action_help(self) -> None:
         self.push_screen(HelpModal())
@@ -679,26 +1056,87 @@ class NixPickApp(App[None]):
     @work(thread=True, group="index", exclusive=True)
     def _refresh_index_worker(self) -> None:
         try:
-            index = load_index(
+            raw = load_index(
                 refresh=True,
                 on_status=lambda m: self.call_from_thread(self._set_loading, m),
             )
-            self.call_from_thread(self._on_index_ready, index)
+            pkg_index = PackageIndex.from_dict(raw)
+            self.call_from_thread(self._on_index_ready, pkg_index)
         except NixCommandError as err:
             self.call_from_thread(self.notify, str(err), severity="error")
 
-    async def action_install(self) -> None:
+    def action_remove(self) -> None:
         row = self._current_row()
         if row is None:
+            return
+        if row.attr not in self._installed:
+            self.notify(
+                f"{row.attr} n'est pas dans packages.nix — rien à retirer.",
+                severity="warning",
+                timeout=3,
+            )
+            return
+        plan = plan_remove(row.attr)
+        if isinstance(plan, RemoveFailure):
+            self.notify(plan.message, severity="warning")
+            return
+        self.push_screen(
+            ConfirmRemoveModal(
+                plan, dry_run=self._dry_run, transparent=self._transparent
+            ),
+            lambda confirmed: self._after_remove_confirm(confirmed, plan, row),
+        )
+
+    def _after_remove_confirm(
+        self, confirmed: bool | None, plan: RemovePlan, row: ResultRow
+    ) -> None:
+        if not confirmed:
+            return
+        if self._dry_run:
+            self.notify("Simulation : rien n'a été écrit.", timeout=3)
+            return
+        try:
+            commit_remove(plan, dry_run=False)
+        except PermissionError:
+            self.notify(f"Pas les droits sur {plan.packages_file}.", severity="error")
+            return
+        except LookupError as err:
+            self.notify(str(err), severity="error")
+            return
+
+        self._installed.discard(row.attr)
+        self._rebuild_list()
+        self.notify(
+            f"Retiré.  apply : {rebuild_command()}",
+            timeout=6,
+        )
+
+    def action_install(self) -> None:
+        row = self._current_row()
+        if row is None:
+            return
+        if row.attr in self._installed:
+            self.notify(
+                "Déjà dans packages.nix — [x] pour retirer.",
+                severity="warning",
+                timeout=3,
+            )
             return
         plan = plan_add(row.attr, row.description)
         if isinstance(plan, AddFailure):
             self.notify(plan.message, severity="warning")
             return
 
-        confirmed = await self.push_screen_wait(
-            ConfirmAddModal(plan, dry_run=self._dry_run)
+        self.push_screen(
+            ConfirmAddModal(
+                plan, dry_run=self._dry_run, transparent=self._transparent
+            ),
+            lambda confirmed: self._after_install_confirm(confirmed, plan, row),
         )
+
+    def _after_install_confirm(
+        self, confirmed: bool | None, plan: AddPlan, row: ResultRow
+    ) -> None:
         if not confirmed:
             return
         if self._dry_run:
@@ -713,7 +1151,7 @@ class NixPickApp(App[None]):
         self._installed.add(row.attr)
         self._rebuild_list()
         self.notify(
-            f"Ajouté.  apply : {REBUILD_CMD}",
+            f"Ajouté.  apply : {rebuild_command()}",
             timeout=6,
         )
 

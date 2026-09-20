@@ -1,0 +1,59 @@
+/* Thème dmenu nixpick — autonome (pas besoin de colors.rasi) */
+configuration {
+  modi: "dmenu";
+}
+
+* {
+  font: "JetBrainsMono Nerd Font 13";
+  background-color: transparent;
+  text-color: #e8e4df;
+}
+
+window {
+  transparency: "real";
+  location: center;
+  anchor: center;
+  width: 44em;
+  border: 2px;
+  border-color: #53433f;
+  border-radius: 18px;
+  background-color: #271d1b;
+}
+
+mainbox {
+  children: [ inputbar, listview ];
+  spacing: 8px;
+  padding: 12px 14px 14px 14px;
+}
+
+inputbar {
+  padding: 8px 12px;
+  spacing: 8px;
+  children: [ prompt, entry ];
+}
+
+prompt {
+  text-color: #ffb59e;
+}
+
+entry {
+  placeholder: "Filtrer…";
+  text-color: #f1dfda;
+}
+
+listview {
+  lines: 12;
+  columns: 1;
+  fixed-height: true;
+  spacing: 4px;
+}
+
+element {
+  padding: 8px 12px;
+  border-radius: 10px;
+}
+
+element selected {
+  background-color: #723521;
+  text-color: #ffdbd0;
+}

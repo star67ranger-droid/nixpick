@@ -1,0 +1,50 @@
+/* Étape 1 : saisie du terme de recherche */
+configuration {
+  modi: "dmenu";
+}
+
+* {
+  font: "JetBrainsMono Nerd Font 13";
+  background-color: transparent;
+  text-color: #e8e4df;
+}
+
+window {
+  transparency: "real";
+  location: center;
+  anchor: center;
+  width: 36em;
+  border: 2px;
+  border-color: #53433f;
+  border-radius: 18px;
+  background-color: #271d1b;
+}
+
+mainbox {
+  children: [ inputbar, textbox ];
+  spacing: 10px;
+  padding: 14px 16px 16px 16px;
+}
+
+inputbar {
+  padding: 8px 12px;
+  spacing: 8px;
+  children: [ prompt, entry ];
+}
+
+prompt {
+  text-color: #ffb59e;
+}
+
+entry {
+  placeholder: "ex. firefox, cursor, spotify…";
+  text-color: #f1dfda;
+}
+
+textbox {
+  text: "Valide avec Entrée pour afficher les paquets (min. 2 caractères).";
+  font: "JetBrainsMono Nerd Font 11";
+  vertical-align: 0.5;
+  horizontal-align: 0.0;
+  color: #8b8478;
+}
