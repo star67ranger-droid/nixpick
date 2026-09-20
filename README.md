@@ -80,6 +80,11 @@ nixpick --print-config
 | `nixpick --refresh` | Reconstruit l’index nixpkgs au démarrage |
 | `nixpick --build-index-only` | Index seulement, puis quitte |
 | `nixpick --list-installed` | Attributs déjà dans `systemPackages` (une ligne par attr) |
+| `nixpick --list-installed --json` | Même liste en une ligne JSON (`attrs`, `count`, `packages_file`, `index_age_days`) |
+| `nixpick --undo` | Restaure le fichier configuré depuis la sauvegarde de la dernière écriture (pas de rebuild) |
+| `nixpick doctor` | Vérifie fichier packages, cache index, verrou, outils (`nix-env`, Rofi), commande rebuild |
+| `nixpick doctor --json` | Même diagnostic en JSON |
+| `nixpick --why <attr>` | Indique si l’attribut est dans le fichier configuré (ligne approximative) |
 | `nixpick --transparent` / `--opaque` | Fond TUI (ANSI / Kitty) |
 
 ### TUI — raccourcis
@@ -95,7 +100,10 @@ Les entrées déjà présentes dans `systemPackages` sont marquées **●**.
 ### Rofi
 
 1. Saisir un terme (ex. `cursor`) → **Entrée**
-2. Choisir dans la liste · **✓** = déjà dans la config → proposition de retrait
+2. Choisir dans la liste · **✓** = déjà dans `systemPackages` (retrait proposé) · sans ✓ = ajout
+3. Aperçu **read-only** du diff (`+` / `-` autour de la ligne concernée), puis **Confirmer l'ajout** / **Confirmer le retrait** ou **Annuler** (sans notification)
+
+Après validation : notification avec la commande de rebuild configurée (`rebuild_command`) — **jamais** lancée automatiquement.
 
 Thèmes : `assets/rofi/` dans le dépôt, ou `~/.config/rofi/nixpick*.rasi` (installés par `install.sh`).
 
@@ -104,7 +112,7 @@ Thèmes : `assets/rofi/` dans le dépôt, ou `~/.config/rofi/nixpick*.rasi` (ins
 - Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours)
 - Descriptions : `nix eval` à la demande pour les résultats affichés
 - **Jamais** de `nixos-rebuild` automatique — seulement rappel de `rebuild_command`
-- Sauvegarde horodatée `packages.nix.bak.YYYYMMDD-HHMMSS` avant écriture
+- Sauvegarde horodatée `packages.nix.bak.YYYYMMDD-HHMMSS` avant écriture ; métadonnées dans `~/.cache/nixpick/last-op.json` pour `nixpick --undo`
 
 ## Hyprland / Waybar (exemple)
 

@@ -8,7 +8,6 @@ from engine import (
     DEFAULT_RESULT_LIMIT,
     AddFailure,
     NixCommandError,
-    rebuild_command,
     RemoveFailure,
     commit_add,
     commit_remove,
@@ -18,6 +17,7 @@ from engine import (
     plan_remove,
     search,
 )
+from messages import cli_cancelled, cli_success_lines
 
 BOLD, DIM, GREEN, YELLOW, RED, RESET = (
     "\033[1m",
@@ -55,7 +55,7 @@ def run_cli_remove(term: str, dry_run: bool) -> int:
         say()
         return 1
     if answer not in ("o", "oui", "y"):
-        say("Abandonné.")
+        say(cli_cancelled())
         return 0
 
     try:
@@ -67,10 +67,9 @@ def run_cli_remove(term: str, dry_run: bool) -> int:
         say(f"{RED}{err}{RESET}")
         return 1
 
-    say(f"{GREEN}Retiré.{RESET} Sauvegarde : {plan.backup_path}")
-    say()
-    say(f"{BOLD}Pour appliquer :{RESET}")
-    say(f"  {rebuild_command()}")
+    say(f"{GREEN}Retiré.{RESET}")
+    for line in cli_success_lines(plan.backup_path):
+        say(line if line else "")
     return 0
 
 
@@ -128,7 +127,7 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
         say()
         return 1
     if answer not in ("o", "oui", "y"):
-        say("Abandonné.")
+        say(cli_cancelled())
         return 0
 
     try:
@@ -137,8 +136,7 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
         say(f"{RED}Pas les droits d'écriture sur {plan.packages_file}.{RESET}")
         return 1
 
-    say(f"{GREEN}Ajouté.{RESET} Sauvegarde : {plan.backup_path}")
-    say()
-    say(f"{BOLD}Pour appliquer :{RESET}")
-    say(f"  {rebuild_command()}")
+    say(f"{GREEN}Ajouté.{RESET}")
+    for line in cli_success_lines(plan.backup_path):
+        say(line if line else "")
     return 0

@@ -27,6 +27,7 @@ from engine import (
     TUI_RESULT_LIMIT,
     commit_add,
     commit_remove,
+    INDEX_STALE_NOTIFY_DAYS,
     index_age_days,
     list_installed_attrs,
     load_index,
@@ -611,6 +612,12 @@ class NixPickApp(App[None]):
         self._installed = list_installed_attrs()
         self._apply_transparent_class()
         self._paint_chrome()
+        age = index_age_days()
+        if age is not None and age > INDEX_STALE_NOTIFY_DAYS:
+            self.notify(
+                f"Index vieux de {age:.0f} j — Ctrl+R pour reconstruire",
+                timeout=8,
+            )
         self.query_one("#search", Input).focus()
         self._load_index_worker()
 

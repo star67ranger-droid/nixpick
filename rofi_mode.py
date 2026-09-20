@@ -12,7 +12,6 @@ from engine import (
     DEFAULT_RESULT_LIMIT,
     AddFailure,
     NixCommandError,
-    rebuild_command,
     RemoveFailure,
     commit_add,
     commit_remove,
@@ -23,6 +22,23 @@ from engine import (
     plan_remove,
     search,
 )
+from messages import (
+    ROFI_CONFIRM_ADD,
+    ROFI_CONFIRM_REMOVE,
+    diff_preview_text,
+    notify_add_failure,
+    notify_dry_run_add,
+    notify_dry_run_remove,
+    notify_index_error,
+    notify_not_found,
+    notify_permission_denied,
+    notify_remove_failure,
+    notify_search_too_short,
+    notify_success_add,
+    notify_success_remove,
+    rofi_confirm_choices,
+)
+
 
 def _rofi_theme(*, query_only: bool = False) -> str:
     for path in rofi_theme_paths(query_only):
@@ -84,6 +100,23 @@ def _rofi(
     return out or None
 
 
+def _rofi_preview(message: str) -> None:
+    """Affiche l’aperçu diff (read-only) avant confirmation."""
+    if not shutil.which("rofi"):
+        return
+    cmd = [
+        "rofi",
+        "-e",
+        message,
+        "-theme",
+        _rofi_theme(),
+    ]
+    try:
+        subprocess.run(cmd, check=False, timeout=300)
+    except (OSError, subprocess.TimeoutExpired):
+        return
+
+
 def _notify(title: str, body: str) -> None:
     if not shutil.which("notify-send"):
         return
@@ -97,24 +130,46 @@ def _notify(title: str, body: str) -> None:
         return
 
 
+def _confirm_plan(
+    attr: str,
+    context_lines: list[str],
+    packages_file: Path,
+    *,
+    remove: bool,
+) -> bool:
+    _rofi_preview(diff_preview_text(context_lines, packages_file))
+    verb = "retrait" if remove else "ajout"
+    answer = _rofi(
+        f"{attr} — confirmer l'{verb} ?",
+        rofi_confirm_choices(remove=remove),
+        max_lines=2,
+    )
+    if remove:
+        return answer == ROFI_CONFIRM_REMOVE
+    return answer == ROFI_CONFIRM_ADD
+
+
 def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
     term = _rofi("󰏖 nixpick", query_only=True)
     if not term:
         return 0
     term = term.strip()
     if len(term) < 2:
-        _notify("nixpick", "Tape au moins 2 caractères.")
+        t, b = notify_search_too_short()
+        _notify(t, b)
         return 1
 
     try:
         index = load_index(refresh=refresh)
     except NixCommandError as err:
-        _notify("nixpick — index", str(err))
+        t, b = notify_index_error(str(err))
+        _notify(t, b)
         return 1
 
     results = search(index, term, limit=DEFAULT_RESULT_LIMIT)
     if not results:
-        _notify("nixpick", f"Rien trouvé pour « {term} ».")
+        t, b = notify_not_found(term)
+        _notify(t, b)
         return 1
 
     installed = list_installed_attrs()
@@ -138,45 +193,56 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
     if already:
         plan_rm = plan_remove(attr)
         if isinstance(plan_rm, RemoveFailure):
-            _notify("nixpick", plan_rm.message)
+            t, b = notify_remove_failure(plan_rm)
+            _notify(t, b)
             return 0
-        preview = "\n".join(plan_rm.context_lines[-4:])
-        _notify("nixpick — retrait", preview[:220] or attr)
-        answer = _rofi(f"Retirer {attr} ?", ["Oui, retirer", "Non"], max_lines=2)
-        if answer != "Oui, retirer":
+        if not _confirm_plan(
+            attr,
+            plan_rm.context_lines,
+            plan_rm.packages_file,
+            remove=True,
+        ):
             return 0
         if dry_run:
-            _notify("nixpick (dry-run)", f"{attr} aurait été retiré.")
+            t, b = notify_dry_run_remove(attr)
+            _notify(t, b)
             return 0
         try:
             commit_remove(plan_rm, dry_run=False)
         except PermissionError:
-            _notify("nixpick", f"Pas les droits d'écriture sur {plan_rm.packages_file}")
+            t, b = notify_permission_denied(plan_rm.packages_file)
+            _notify(t, b)
             return 1
-        _notify(f"nixpick · {attr} retiré", f"Pour appliquer :\n{rebuild_command()}")
+        t, b = notify_success_remove(attr, plan_rm.backup_path)
+        _notify(t, b)
         return 0
 
     plan = plan_add(attr, descriptions.get(attr, ""))
     if isinstance(plan, AddFailure):
-        _notify("nixpick", plan.message)
+        t, b = notify_add_failure(plan)
+        _notify(t, b)
         return 0
 
-    preview = "\n".join(plan.context_lines[-4:])
-    _notify("nixpick — aperçu", preview[:220] or attr)
-
-    answer = _rofi(f"Ajouter {attr} ?", ["Oui", "Non"], max_lines=2)
-    if answer != "Oui":
+    if not _confirm_plan(
+        attr,
+        plan.context_lines,
+        plan.packages_file,
+        remove=False,
+    ):
         return 0
 
     if dry_run:
-        _notify("nixpick (dry-run)", f"{attr} aurait été ajouté.")
+        t, b = notify_dry_run_add(attr)
+        _notify(t, b)
         return 0
 
     try:
         commit_add(plan, dry_run=False)
     except PermissionError:
-        _notify("nixpick", f"Pas les droits d'écriture sur {plan.packages_file}")
+        t, b = notify_permission_denied(plan.packages_file)
+        _notify(t, b)
         return 1
 
-    _notify(f"nixpick · {attr} ajouté", f"Pour appliquer :\n{rebuild_command()}")
+    t, b = notify_success_add(attr, plan.backup_path)
+    _notify(t, b)
     return 0

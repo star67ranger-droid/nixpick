@@ -14,11 +14,19 @@ Exemples :
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from cli import run_cli, run_cli_remove
 from config import __version__, get_settings
-from engine import build_index, list_installed_attrs
+from doctor import run_doctor, run_why
+from engine import (
+    build_index,
+    index_age_days,
+    list_installed_attrs,
+    packages_file,
+    undo_last_write,
+)
 from rofi_mode import run_rofi
 from tui import run_tui
 
@@ -32,6 +40,16 @@ def main() -> int:
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="vérifie config, cache, outils (sans lancer Nix)",
+    )
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="sortie JSON (checks structurés)",
     )
     parser.add_argument(
         "--print-config",
@@ -88,7 +106,25 @@ def main() -> int:
         action="store_true",
         help="liste les attributs déjà présents dans environment.systemPackages",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="avec --list-installed : une ligne JSON (attrs, count, packages_file, index_age_days)",
+    )
+    parser.add_argument(
+        "--undo",
+        action="store_true",
+        help="restaure packages.nix depuis la dernière sauvegarde (sans rebuild)",
+    )
+    parser.add_argument(
+        "--why",
+        metavar="ATTR",
+        help="indique si un attribut est dans le fichier packages configuré",
+    )
     args = parser.parse_args()
+
+    if args.command == "doctor":
+        return run_doctor(as_json=args.json)
 
     if args.print_config:
         s = get_settings()
@@ -98,10 +134,35 @@ def main() -> int:
         print(f"rebuild_command={s.rebuild_command}")
         return 0
 
+    if args.why is not None:
+        return run_why(args.why)
+
     if args.list_installed:
-        for attr in sorted(list_installed_attrs()):
-            print(attr)
+        if args.json:
+            attrs = sorted(list_installed_attrs())
+            print(
+                json.dumps(
+                    {
+                        "attrs": attrs,
+                        "count": len(attrs),
+                        "packages_file": str(packages_file()),
+                        "index_age_days": index_age_days(),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        else:
+            for attr in sorted(list_installed_attrs()):
+                print(attr)
         return 0
+
+    if args.undo:
+        result = undo_last_write()
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        return result.code
 
     if args.build_index_only:
         build_index(on_status=lambda m: print(m, file=sys.stderr))

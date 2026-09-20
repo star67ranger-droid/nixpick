@@ -33,7 +33,7 @@ Repository = "https://github.com/star67ranger-droid/nixpick"
 nixpick = "nixpick:main"
 
 [tool.setuptools]
-py-modules = ["nixpick", "engine", "tui", "cli", "rofi_mode", "config"]
+py-modules = ["nixpick", "engine", "tui", "cli", "rofi_mode", "config", "messages", "doctor"]
 
 [tool.setuptools.package-data]
 "*" = ["assets/rofi/*.rasi", "config.example.toml"]

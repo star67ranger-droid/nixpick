@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
@@ -32,13 +33,16 @@ def rebuild_command() -> str:
 
 CACHE_DIR = Path.home() / ".cache" / "nixpick"
 INDEX_FILE = CACHE_DIR / "index.json"
+INDEX_META_FILE = CACHE_DIR / "index-meta.json"
 INDEX_MAX_AGE_DAYS = 7
+INDEX_STALE_NOTIFY_DAYS = 14
 
 DEFAULT_RESULT_LIMIT = 12
 TUI_RESULT_LIMIT = 40
 ATTR_NAME_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
 DESC_CACHE_FILE = CACHE_DIR / "descriptions.json"
+LAST_OP_FILE = CACHE_DIR / "last-op.json"
 
 StatusCallback = Callable[[str], None]
 
@@ -60,7 +64,24 @@ def run(cmd: list[str], timeout: int) -> str:
         raise NixCommandError((err.stderr or err.stdout or "").strip()[:400])
 
 
+def _write_index_meta(built_at: float | None = None) -> None:
+    ts = built_at if built_at is not None else time.time()
+    built_at_iso = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    INDEX_META_FILE.write_text(json.dumps({"built_at": built_at_iso}))
+
+
 def index_age_days() -> float | None:
+    if INDEX_META_FILE.exists():
+        try:
+            meta = json.loads(INDEX_META_FILE.read_text())
+            raw = meta.get("built_at")
+            if isinstance(raw, str) and raw:
+                built = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if built.tzinfo is None:
+                    built = built.replace(tzinfo=timezone.utc)
+                return (time.time() - built.timestamp()) / 86400
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            pass
     if not INDEX_FILE.exists():
         return None
     return (time.time() - INDEX_FILE.stat().st_mtime) / 86400
@@ -77,6 +98,7 @@ def build_index(on_status: StatusCallback | None = None) -> dict:
     }
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     INDEX_FILE.write_text(json.dumps(slim))
+    _write_index_meta()
     if on_status:
         on_status(f"{len(slim)} paquets indexés.")
     return slim
@@ -388,6 +410,106 @@ def _packages_edit_lock() -> Iterator[None]:
             fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
 
 
+def _record_last_op(op: str, attr: str, backup_path: Path, pkg_file: Path) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "timestamp": time.time(),
+        "op": op,
+        "attr": attr,
+        "backup_path": str(backup_path),
+        "packages_file": str(pkg_file),
+    }
+    _atomic_write_text(LAST_OP_FILE, json.dumps(payload, indent=2) + "\n")
+
+
+def _load_last_op() -> dict | None:
+    if not LAST_OP_FILE.exists():
+        return None
+    try:
+        data = json.loads(LAST_OP_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _backup_matches_target(backup_path: Path, target: Path) -> bool:
+    prefix = f"{target.name}.bak."
+    return backup_path.name.startswith(prefix) and backup_path.parent == target.parent
+
+
+@dataclass(frozen=True, slots=True)
+class UndoResult:
+    code: int
+    stdout: str = ""
+    stderr: str = ""
+
+
+def undo_last_write() -> UndoResult:
+    """Restaure packages_file depuis la dernière sauvegarde (sans rebuild)."""
+    record = _load_last_op()
+    if not record:
+        return UndoResult(1, stderr="Aucune dernière opération enregistrée.")
+
+    op = record.get("op")
+    attr = record.get("attr", "")
+    if op not in ("add", "remove"):
+        return UndoResult(1, stderr="Dernière opération invalide ou illisible.")
+
+    target = packages_file()
+    recorded_target = record.get("packages_file")
+    if not recorded_target:
+        return UndoResult(1, stderr="Dernière opération invalide ou illisible.")
+    try:
+        if Path(recorded_target).resolve() != target.resolve():
+            return UndoResult(
+                1,
+                stderr=(
+                    f"La dernière opération concerne un autre fichier "
+                    f"({recorded_target}), pas {target}."
+                ),
+            )
+    except OSError:
+        return UndoResult(1, stderr="Chemin de la dernière opération invalide.")
+
+    backup_raw = record.get("backup_path")
+    if not backup_raw:
+        return UndoResult(1, stderr="Dernière opération sans sauvegarde associée.")
+    backup_path = Path(backup_raw)
+    if not backup_path.is_file():
+        return UndoResult(1, stderr=f"Sauvegarde introuvable : {backup_path}")
+    if not _backup_matches_target(backup_path, target):
+        return UndoResult(
+            1,
+            stderr=f"La sauvegarde ne correspond pas au fichier cible {target}.",
+        )
+
+    try:
+        with _packages_edit_lock():
+            _atomic_write_text(target, backup_path.read_text(encoding="utf-8"))
+    except PermissionError:
+        return UndoResult(
+            1, stderr=f"Pas les droits d'écriture sur {target}."
+        )
+    except OSError as err:
+        return UndoResult(1, stderr=f"Restauration impossible : {err}")
+
+    try:
+        LAST_OP_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    verb = "ajout" if op == "add" else "retrait"
+    return UndoResult(
+        0,
+        stdout=(
+            f"Fichier restauré : {target} "
+            f"(annulation du {verb} de {attr})."
+        ),
+    )
+
+
 def _atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
@@ -479,6 +601,7 @@ def commit_add(plan: AddPlan, dry_run: bool = False) -> None:
         shutil.copy2(path, plan.backup_path)
         lines.insert(insert_at, plan.new_line)
         _atomic_write_text(path, "".join(lines))
+        _record_last_op("add", plan.attr, plan.backup_path, path)
 
 
 def _find_insertion_point(lines: list[str]) -> tuple[int, str]:
@@ -580,3 +703,4 @@ def commit_remove(plan: RemovePlan, dry_run: bool = False) -> None:
         shutil.copy2(path, plan.backup_path)
         del lines[line_idx]
         _atomic_write_text(path, "".join(lines))
+        _record_last_op("remove", plan.attr, plan.backup_path, path)
