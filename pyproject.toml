@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nixpick"
-version = "0.3.1"
+version = "0.3.2"
 description = "Recherche nixpkgs et édition déclarative de environment.systemPackages (NixOS)"
 readme = "README.md"
 license = "MIT"
@@ -33,7 +33,21 @@ Repository = "https://github.com/star67ranger-droid/nixpick"
 nixpick = "nixpick:main"
 
 [tool.setuptools]
-py-modules = ["nixpick", "engine", "tui", "cli", "rofi_mode", "config", "messages", "doctor"]
+py-modules = [
+  "nixpick",
+  "engine",
+  "tui",
+  "cli",
+  "rofi_mode",
+  "config",
+  "messages",
+  "doctor",
+  "rebuild_runner",
+  "flake_lock",
+  "rofi_theme",
+  "tui_css",
+  "theme",
+]
 
 [tool.setuptools.package-data]
 "*" = ["assets/rofi/*.rasi", "config.example.toml"]
