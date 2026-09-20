@@ -18,6 +18,7 @@ from engine import (
     search,
 )
 from messages import cli_cancelled, cli_success_lines
+from rebuild_runner import run_rebuild
 
 BOLD, DIM, GREEN, YELLOW, RED, RESET = (
     "\033[1m",
@@ -70,7 +71,18 @@ def run_cli_remove(term: str, dry_run: bool) -> int:
     say(f"{GREEN}Retiré.{RESET}")
     for line in cli_success_lines(plan.backup_path):
         say(line if line else "")
-    return 0
+    return _maybe_rebuild_after_cli()
+
+
+def _maybe_rebuild_after_cli() -> int:
+    try:
+        answer = input("\nLancer nixpick rebuild maintenant ? [o/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        say()
+        return 0
+    if answer not in ("o", "oui", "y"):
+        return 0
+    return run_rebuild(yes=True, in_terminal=False)
 
 
 def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
@@ -139,4 +151,4 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
     say(f"{GREEN}Ajouté.{RESET}")
     for line in cli_success_lines(plan.backup_path):
         say(line if line else "")
-    return 0
+    return _maybe_rebuild_after_cli()

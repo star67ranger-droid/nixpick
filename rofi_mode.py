@@ -25,6 +25,7 @@ from engine import (
 from messages import (
     ROFI_CONFIRM_ADD,
     ROFI_CONFIRM_REMOVE,
+    ROFI_REBUILD_NOW,
     diff_preview_text,
     notify_add_failure,
     notify_dry_run_add,
@@ -37,7 +38,9 @@ from messages import (
     notify_success_add,
     notify_success_remove,
     rofi_confirm_choices,
+    rofi_rebuild_choices,
 )
+from rebuild_runner import run_rebuild
 
 
 def _rofi_theme(*, query_only: bool = False) -> str:
@@ -117,6 +120,18 @@ def _rofi_preview(message: str) -> None:
         return
 
 
+def _offer_rebuild() -> None:
+    answer = _rofi("Appliquer sur le système ?", rofi_rebuild_choices(), max_lines=2)
+    if answer != ROFI_REBUILD_NOW:
+        return
+    code = run_rebuild(yes=True, in_terminal=True)
+    if code != 0:
+        _notify(
+            "nixpick — rebuild",
+            f"Le rebuild a quitté avec le code {code}.\nRelance : nixpick rebuild",
+        )
+
+
 def _notify(title: str, body: str) -> None:
     if not shutil.which("notify-send"):
         return
@@ -150,6 +165,9 @@ def _confirm_plan(
 
 
 def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
+    from rofi_theme import sync_rofi_themes
+
+    sync_rofi_themes()
     term = _rofi("󰏖 nixpick", query_only=True)
     if not term:
         return 0
@@ -215,6 +233,7 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
             return 1
         t, b = notify_success_remove(attr, plan_rm.backup_path)
         _notify(t, b)
+        _offer_rebuild()
         return 0
 
     plan = plan_add(attr, descriptions.get(attr, ""))
@@ -245,4 +264,5 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
 
     t, b = notify_success_add(attr, plan.backup_path)
     _notify(t, b)
+    _offer_rebuild()
     return 0

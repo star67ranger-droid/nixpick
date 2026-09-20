@@ -8,7 +8,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-__version__ = "0.2.0"
+__version__ = "0.3.1"
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path.home() / ".config" / "nixpick"
@@ -133,13 +133,11 @@ def asset_path(*parts: str) -> Path:
 
 
 def rofi_theme_paths(query_only: bool) -> list[Path]:
-    """Ordre de recherche des thèmes Rofi."""
-    names = (
-        ("nixpick-query.rasi", "nixpick-query.rasi")
-        if query_only
-        else ("nixpick.rasi", "nixpick.rasi")
-    )
-    name = names[0]
+    """Ordre de recherche des thèmes Rofi (générés dans CONFIG_DIR/rofi si présents)."""
+    from rofi_theme import sync_rofi_themes
+
+    sync_rofi_themes()
+    name = "nixpick-query.rasi" if query_only else "nixpick.rasi"
     return [
         CONFIG_DIR / "rofi" / name,
         Path.home() / ".config/rofi" / name,

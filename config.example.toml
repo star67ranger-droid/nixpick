@@ -1,4 +1,5 @@
 # Copier vers ~/.config/nixpick/config.toml et adapter.
+# Couleurs : voir docs/THEMES.md
 
 packages_file = "/etc/nixos/modules/packages.nix"
 packages_anchor = "environment.systemPackages"
@@ -6,3 +7,30 @@ rebuild_command = "sudo nixos-rebuild switch --flake /etc/nixos#nixos"
 
 # TUI : fond transparent (terminal ANSI, ex. Kitty background_opacity)
 transparent_background = false
+
+# ── Thème TUI (Textual) ─────────────────────────────────────────────────────
+[colors]
+background = "#2c2d31"
+surface = "#232326"
+surface_elevated = "#35363b"
+text = "#a7aab0"
+text_muted = "#737994"
+primary = "#57a5e5"
+accent = "#51a8b3"
+accent_alt = "#bb70d2"
+warning = "#e5c07b"
+success = "#8fb573"
+danger = "#e06c75"
+detail_title = "#dbb671"
+list_highlight_bg = "#2c2d31"
+
+# ── Thème Rofi (nixpick --rofi) ─────────────────────────────────────────────
+[colors.rofi]
+background = "#271d1b"
+text = "#e8e4df"
+border = "#53433f"
+prompt = "#ffb59e"
+entry_text = "#f1dfda"
+selected_background = "#723521"
+selected_text = "#ffdbd0"
+comment = "#8b8478"

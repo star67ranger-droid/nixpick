@@ -21,6 +21,7 @@ from engine import (
     packages_file,
     rebuild_command,
 )
+from flake_lock import check_nixpick_flake_lock
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,11 @@ def _check_rebuild() -> Check:
     )
 
 
+def _check_flake_lock() -> Check:
+    ok, detail = check_nixpick_flake_lock()
+    return Check("flake.lock (input nixpick)", ok, detail.replace("\n", "\n      "))
+
+
 def collect_checks() -> list[Check]:
     return [
         _check_packages_file(),
@@ -141,6 +147,7 @@ def collect_checks() -> list[Check]:
         _check_lock(),
         _check_nix_env(),
         _check_rofi(),
+        _check_flake_lock(),
         _check_rebuild(),
     ]
 

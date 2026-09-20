@@ -15,6 +15,12 @@ from textual.widgets import Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from config import load_transparent_background, save_transparent_background
+from theme import TuiColors, get_color_palette, load_color_palette, reset_color_palette_cache
+from tui_css import (
+    build_app_css,
+    build_confirm_add_css,
+    build_confirm_remove_css,
+)
 from engine import (
     AddFailure,
     AddPlan,
@@ -74,82 +80,17 @@ def _format_diff_markup(context_lines: list[str]) -> str:
     return "\n".join(rows)
 
 
+def _modal_actions_markup(c: TuiColors) -> str:
+    return (
+        f"[bold #{c.rich('success')}]y[/] ou [bold #{c.rich('success')}]↵[/]  confirmer     "
+        f"[bold #{c.rich('danger')}]n[/] ou [bold #{c.rich('danger')}]esc[/]  annuler"
+    )
+
+
 class ConfirmAddModal(ModalScreen[bool]):
     """Modale de confirmation type lazygit : centrée, aperçu court, actions explicites."""
 
-    CSS = """
-    ConfirmAddModal {
-        align: center middle;
-    }
-
-    #confirm-box {
-        width: 78;
-        background: #35363b;
-        border: round #51a8b3;
-        padding: 1 2;
-    }
-
-    #modal-title {
-        color: #a7aab0;
-        margin-bottom: 0;
-    }
-
-    #modal-attr {
-        text-style: bold;
-        color: #57a5e5;
-        margin-top: 1;
-    }
-
-    #modal-path {
-        color: #737994;
-    }
-
-    #modal-desc {
-        color: #a7aab0;
-        margin: 1 0 0 0;
-    }
-
-    #modal-badge {
-        color: #e5c07b;
-        margin-top: 1;
-    }
-
-    #diff-panel {
-        height: auto;
-        max-height: 10;
-        margin: 1 0;
-        padding: 0 1 1 1;
-        background: #2c2d31;
-        border: round #737994;
-        border-title-color: #dbb671;
-        border-title-align: left;
-    }
-
-    #diff {
-        width: 1fr;
-        height: auto;
-    }
-
-    #modal-actions {
-        height: 1;
-        margin-top: 1;
-        color: #737994;
-    }
-
-    ConfirmAddModal.transparent {
-        background: ansi_default;
-    }
-
-    ConfirmAddModal.transparent #confirm-box {
-        background: ansi_default;
-        border: round #737994;
-    }
-
-    ConfirmAddModal.transparent #diff-panel {
-        background: ansi_default;
-        border: round #737994;
-    }
-    """
+    CSS = ""
 
     BINDINGS = [
         Binding("y", "confirm", "Oui"),
@@ -188,8 +129,7 @@ class ConfirmAddModal(ModalScreen[bool]):
                 panel.border_title = " aperçu "
                 yield Static(diff, id="diff")
             yield Static(
-                "[bold #8fb573]y[/] ou [bold #8fb573]↵[/]  confirmer     "
-                "[bold #e06c75]n[/] ou [bold #e06c75]esc[/]  annuler",
+                _modal_actions_markup(get_color_palette().tui),
                 id="modal-actions",
             )
 
@@ -203,74 +143,7 @@ class ConfirmAddModal(ModalScreen[bool]):
 class ConfirmRemoveModal(ModalScreen[bool]):
     """Retirer une entrée de environment.systemPackages."""
 
-    CSS = """
-    ConfirmRemoveModal {
-        align: center middle;
-    }
-
-    #confirm-box {
-        width: 78;
-        background: #35363b;
-        border: round #e06c75;
-        padding: 1 2;
-    }
-
-    #modal-title {
-        color: #e06c75;
-        margin-bottom: 0;
-    }
-
-    #modal-attr {
-        text-style: bold;
-        color: #57a5e5;
-        margin-top: 1;
-    }
-
-    #modal-path {
-        color: #737994;
-    }
-
-    #modal-badge {
-        color: #e5c07b;
-        margin-top: 1;
-    }
-
-    #diff-panel {
-        height: auto;
-        max-height: 10;
-        margin: 1 0;
-        padding: 0 1 1 1;
-        background: #2c2d31;
-        border: round #737994;
-        border-title-color: #e06c75;
-        border-title-align: left;
-    }
-
-    #diff {
-        width: 1fr;
-        height: auto;
-    }
-
-    #modal-actions {
-        height: 1;
-        margin-top: 1;
-        color: #737994;
-    }
-
-    ConfirmRemoveModal.transparent {
-        background: ansi_default;
-    }
-
-    ConfirmRemoveModal.transparent #confirm-box {
-        background: ansi_default;
-        border: round #e06c75;
-    }
-
-    ConfirmRemoveModal.transparent #diff-panel {
-        background: ansi_default;
-        border: round #737994;
-    }
-    """
+    CSS = ""
 
     BINDINGS = [
         Binding("y", "confirm", "Oui"),
@@ -314,8 +187,7 @@ class ConfirmRemoveModal(ModalScreen[bool]):
                 panel.border_title = " aperçu "
                 yield Static(diff, id="diff")
             yield Static(
-                "[bold #8fb573]y[/] ou [bold #8fb573]↵[/]  confirmer     "
-                "[bold #e06c75]n[/] ou [bold #e06c75]esc[/]  annuler",
+                _modal_actions_markup(get_color_palette().tui),
                 id="modal-actions",
             )
 
@@ -326,40 +198,53 @@ class ConfirmRemoveModal(ModalScreen[bool]):
         self.dismiss(False)
 
 
+def _help_markup(c: TuiColors) -> str:
+    a, p, alt = c.rich("accent"), c.rich("primary"), c.rich("accent_alt")
+    return f"""\
+[b #{alt}]nixpick[/]  [dim]raccourcis[/]
+
+  [b #{a}]taper[/]              cherche tout de suite (comme fzf)
+  [b #{a}]↑ ↓[/]                navigue sans quitter la recherche
+  [b #{a}]↵[/]                  ajouter le paquet surligné
+  [b #{a}]x[/]                  retirer (si ● déjà dans packages.nix)
+  [b #{a}]l[/]                  catalogue des paquets déjà dans la config
+  [b #{a}]tab[/]                aller à la liste / revenir à la recherche
+  [b #{a}]esc[/]                vider la recherche, puis quitter
+  [b #{a}]j k[/]                naviguer (quand la liste a le focus)
+  [b #{a}]F1[/] / [b #{a}?[/]        aide
+  [b #{a}]ctrl+r[/]            reconstruire l'index
+  [b #{a}]i[/] / [b #{a}]ctrl+i[/]   masquer les paquets déjà dans la config
+  [b #{a}]d[/] / [b #{a}]ctrl+d[/]   mode simulation
+  [b #{a}]t[/] / [b #{a}]ctrl+t[/]   fond transparent
+  [b #{a}]q[/]                  quitter
+
+[dim]Couleurs : section [colors] dans ~/.config/nixpick/config.toml
+(voir docs/THEMES.md sur GitHub).
+
+Transparence réelle = mode ANSI (comme superfile) + Kitty :
+dans ~/.config/kitty/kitty.conf → background_opacity 0.85
+Puis Ctrl+T ou t. Un nixos-rebuild n'est jamais lancé seul.[/]
+"""
+
+
 class HelpModal(ModalScreen[None]):
+    CSS = """
+    HelpModal {
+        align: center middle;
+    }
+    """
+
     BINDINGS = [
         Binding("escape", "dismiss", "Fermer"),
         Binding("q", "dismiss", "Fermer"),
         Binding("question_mark", "dismiss", "Fermer", show=False),
     ]
 
-    HELP = """\
-[b #bb70d2]nixpick[/]  [dim]raccourcis[/]
-
-  [b #51a8b3]taper[/]              cherche tout de suite (comme fzf)
-  [b #51a8b3]↑ ↓[/]                navigue sans quitter la recherche
-  [b #51a8b3]↵[/]                  ajouter le paquet surligné
-  [b #51a8b3]x[/]                  retirer (si ● déjà dans packages.nix)
-  [b #51a8b3]l[/]                  catalogue des paquets déjà dans la config
-  [b #51a8b3]tab[/]                aller à la liste / revenir à la recherche
-  [b #51a8b3]esc[/]                vider la recherche, puis quitter
-  [b #51a8b3]j k[/]                naviguer (quand la liste a le focus)
-  [b #51a8b3]F1[/] / [b #51a8b3]?[/]        aide
-  [b #51a8b3]ctrl+r[/]            reconstruire l'index
-  [b #51a8b3]i[/] / [b #51a8b3]ctrl+i[/]   masquer les paquets déjà dans la config
-  [b #51a8b3]d[/] / [b #51a8b3]ctrl+d[/]   mode simulation
-  [b #51a8b3]t[/] / [b #51a8b3]ctrl+t[/]   fond transparent
-  [b #51a8b3]q[/]                  quitter
-
-[dim]Transparence réelle = mode ANSI (comme superfile) + Kitty :
-dans ~/.config/kitty/kitty.conf → background_opacity 0.85
-Puis Ctrl+T ou t. Si ça reste opaque, ton shell/peste peint un fond
-couleur : seul le fond « par défaut » du terminal devient transparent.
-Un nixos-rebuild n'est jamais lancé seul.[/]
-"""
-
     def compose(self) -> ComposeResult:
-        yield Vertical(Static(self.HELP), id="help-box")
+        yield Vertical(
+            Static(_help_markup(get_color_palette().tui)),
+            id="help-box",
+        )
 
     def action_dismiss(self) -> None:
         self.dismiss(None)
@@ -370,155 +255,7 @@ Un nixos-rebuild n'est jamais lancé seul.[/]
 
 class NixPickApp(App[None]):
     TITLE = "nixpick"
-    CSS = """
-    Screen {
-        background: #2c2d31;
-        layout: vertical;
-    }
-
-    #chrome {
-        height: 1;
-        color: #a7aab0;
-        padding: 0 1;
-        background: #232326;
-    }
-
-    #search-row {
-        height: 3;
-        padding: 0 1;
-        background: #232326;
-    }
-
-    #search-icon {
-        width: 3;
-        height: 3;
-        content-align: center middle;
-        color: #57a5e5;
-        background: #232326;
-    }
-
-    #search {
-        height: 3;
-        border: round #737994;
-        background: #232326;
-        color: #a7aab0;
-        padding: 0 1;
-    }
-
-    #search:focus {
-        border: round #57a5e5;
-    }
-
-    #main {
-        height: 1fr;
-        padding: 0 1 0 1;
-    }
-
-    #results {
-        width: 1fr;
-        border: round #737994;
-        border-title-color: #57a5e5;
-        border-title-align: left;
-        background: #232326;
-        scrollbar-color: #57a5e5;
-        scrollbar-background: #2c2d31;
-    }
-
-    #detail-panel {
-        width: 1fr;
-        border: round #737994;
-        border-title-color: #dbb671;
-        border-title-align: left;
-        background: #232326;
-        padding: 1 2;
-    }
-
-    OptionList > .option-list--option-highlighted {
-        background: #2c2d31;
-        color: #51a8b3;
-        text-style: bold;
-    }
-
-    #detail-name {
-        text-style: bold;
-        color: #57a5e5;
-    }
-
-    #detail-meta {
-        color: #737994;
-        margin-bottom: 1;
-    }
-
-    #detail-body {
-        color: #a7aab0;
-    }
-
-    #detail-hint {
-        color: #8fb573;
-        margin-top: 2;
-    }
-
-    #footerbar {
-        height: 1;
-        color: #737994;
-        padding: 0 1;
-        background: #232326;
-    }
-
-    .key {
-        color: #51a8b3;
-    }
-
-    #help-box {
-        width: 64;
-        background: #35363b;
-        border: round #bb70d2;
-        padding: 1 2;
-        margin: 2 4;
-    }
-
-    /* Textual en truecolor : l'alpha RGB ne laisse pas voir le bureau Kitty.
-       Il faut ansi_default + App(ansi_color=True) — voir FAQ Textual. */
-    Screen.transparent {
-        background: ansi_default;
-    }
-    Screen.transparent #chrome,
-    Screen.transparent #search-row,
-    Screen.transparent #search-icon,
-    Screen.transparent #footerbar,
-    Screen.transparent #main {
-        background: ansi_default;
-    }
-    Screen.transparent #search {
-        background: ansi_default;
-        border: round #737994;
-    }
-    Screen.transparent #search:focus {
-        border: round #57a5e5;
-    }
-    Screen.transparent #results {
-        background: ansi_default;
-        border: round #737994;
-        scrollbar-background: ansi_default;
-        scrollbar-background-hover: ansi_default;
-        scrollbar-background-active: ansi_default;
-    }
-    Screen.transparent #detail-panel {
-        background: ansi_default;
-        border: round #737994;
-    }
-    Screen.transparent OptionList {
-        background: ansi_default;
-    }
-    Screen.transparent OptionList > .option-list--option-highlighted {
-        background: ansi_default;
-        color: #51a8b3;
-        text-style: bold;
-    }
-    Screen.transparent #help-box {
-        background: ansi_default;
-    }
-    """
+    CSS = ""
 
     BINDINGS = [
         Binding("q", "quit", "Quitter", show=False),
@@ -672,23 +409,25 @@ class NixPickApp(App[None]):
         else:
             mid = ""
 
+        c = get_color_palette().tui
         self.query_one("#chrome", Static).update(
             Text.from_markup(
-                f"[b #57a5e5]nixpick[/]  [dim]{count}{age_s}[/]{mid}{flag_s}"
+                f"[b #{c.rich('primary')}]nixpick[/]  [dim]{count}{age_s}[/]{mid}{flag_s}"
             )
         )
+        a = c.rich("accent")
         self.query_one("#footerbar", Static).update(
             Text.from_markup(
-                "[b #51a8b3]↵[/] ajouter   "
-                "[b #51a8b3]x[/] retirer   "
-                "[b #51a8b3]l[/] config   "
-                "[b #51a8b3]↑↓[/] nav   "
-                "[b #51a8b3]ctrl+i[/] masquer ●   "
-                "[b #51a8b3]ctrl+d[/] simu   "
-                "[b #51a8b3]ctrl+t[/] fond   "
-                "[b #51a8b3]ctrl+r[/] index   "
-                "[b #51a8b3]?[/] aide   "
-                "[b #51a8b3]q[/] quitter"
+                f"[b #{a}]↵[/] ajouter   "
+                f"[b #{a}]x[/] retirer   "
+                f"[b #{a}]l[/] config   "
+                f"[b #{a}]↑↓[/] nav   "
+                f"[b #{a}]ctrl+i[/] masquer ●   "
+                f"[b #{a}]ctrl+d[/] simu   "
+                f"[b #{a}]ctrl+t[/] fond   "
+                f"[b #{a}]ctrl+r[/] index   "
+                f"[b #{a}]?[/] aide   "
+                f"[b #{a}]q[/] quitter"
             )
         )
 
@@ -715,8 +454,9 @@ class NixPickApp(App[None]):
 
     def _set_loading(self, message: str) -> None:
         self._loading = True
+        p = get_color_palette().tui.rich("primary")
         self.query_one("#chrome", Static).update(
-            Text.from_markup(f"[b #57a5e5]nixpick[/]  [dim]{message}[/]")
+            Text.from_markup(f"[b #{p}]nixpick[/]  [dim]{message}[/]")
         )
 
     def _on_index_ready(self, pkg_index: PackageIndex) -> None:
@@ -905,9 +645,10 @@ class NixPickApp(App[None]):
         desc = cached or "[dim]description…[/]"
         self.query_one("#detail-body", Static).update(desc)
         if installed:
+            d = get_color_palette().tui.rich("danger")
             self.query_one("#detail-hint", Static).update(
                 "[yellow]déjà dans packages.nix[/]  ·  "
-                "[bold #e06c75]x[/] retirer  ·  [dim]↵ n'ajoute pas[/]"
+                f"[bold #{d}]x[/] retirer  ·  [dim]↵ n'ajoute pas[/]"
             )
         elif self._dry_run:
             self.query_one("#detail-hint", Static).update(
@@ -1176,12 +917,26 @@ class NixPickApp(App[None]):
         )
 
 
+def apply_tui_theme() -> None:
+    """Applique la palette config.toml aux classes Textual (à appeler avant .run())."""
+    from rofi_theme import sync_rofi_themes
+
+    reset_color_palette_cache()
+    palette = load_color_palette()
+    c = palette.tui
+    NixPickApp.CSS = build_app_css(c)
+    ConfirmAddModal.CSS = build_confirm_add_css(c)
+    ConfirmRemoveModal.CSS = build_confirm_remove_css(c)
+    sync_rofi_themes(palette)
+
+
 def run_tui(
     refresh: bool = False,
     dry_run: bool = False,
     transparent: bool | None = None,
 ) -> int:
     try:
+        apply_tui_theme()
         NixPickApp(
             refresh=refresh, dry_run=dry_run, transparent=transparent
         ).run()

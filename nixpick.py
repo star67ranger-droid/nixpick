@@ -27,6 +27,7 @@ from engine import (
     packages_file,
     undo_last_write,
 )
+from rebuild_runner import run_rebuild
 from rofi_mode import run_rofi
 from tui import run_tui
 
@@ -50,6 +51,21 @@ def main() -> int:
         "--json",
         action="store_true",
         help="sortie JSON (checks structurés)",
+    )
+    rebuild_parser = subparsers.add_parser(
+        "rebuild",
+        help="lance la commande rebuild configurée (confirmée)",
+    )
+    rebuild_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="sans demander confirmation (utile en script)",
+    )
+    rebuild_parser.add_argument(
+        "--terminal",
+        action="store_true",
+        help="ouvre un émulateur (kitty, foot…) pour sudo / la sortie",
     )
     parser.add_argument(
         "--print-config",
@@ -125,6 +141,13 @@ def main() -> int:
 
     if args.command == "doctor":
         return run_doctor(as_json=args.json)
+
+    if args.command == "rebuild":
+        return run_rebuild(
+            yes=args.yes,
+            in_terminal=args.terminal,
+            dry_run=args.dry_run,
+        )
 
     if args.print_config:
         s = get_settings()

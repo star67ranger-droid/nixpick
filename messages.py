@@ -9,6 +9,8 @@ from engine import AddFailure, RemoveFailure, rebuild_command
 ROFI_CONFIRM_ADD = "Confirmer l'ajout"
 ROFI_CONFIRM_REMOVE = "Confirmer le retrait"
 ROFI_CANCEL = "Annuler"
+ROFI_REBUILD_NOW = "󰐊 Lancer le rebuild"
+ROFI_REBUILD_LATER = "Plus tard"
 
 
 def cli_cancelled() -> str:
@@ -19,8 +21,8 @@ def cli_success_lines(backup_path: Path) -> list[str]:
     return [
         f"Sauvegarde : {backup_path}",
         "",
-        "Pour appliquer :",
-        f"  {rebuild_command()}",
+        "Pour appliquer : nixpick rebuild",
+        f"  ({rebuild_command()})",
     ]
 
 
@@ -88,10 +90,15 @@ def notify_dry_run_add(attr: str) -> tuple[str, str]:
     )
 
 
+def rofi_rebuild_choices() -> list[str]:
+    return [ROFI_REBUILD_NOW, ROFI_REBUILD_LATER]
+
+
 def _success_body(backup_path: Path) -> str:
     return (
         f"Sauvegarde : {backup_path}\n"
-        f"Pour appliquer (copier-coller) :\n{rebuild_command()}"
+        "Applique avec : nixpick rebuild\n"
+        f"({rebuild_command()})"
     )
 
 

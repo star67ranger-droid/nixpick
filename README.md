@@ -53,6 +53,8 @@ rebuild_command = "sudo nixos-rebuild switch --flake /etc/nixos#nixos"
 transparent_background = false
 ```
 
+**Couleurs (TUI + Rofi)** : section `[colors]` et `[colors.rofi]` dans le même fichier. Guide complet : [docs/THEMES.md](docs/THEMES.md). Modèle : [`config.example.toml`](config.example.toml).
+
 Variables d’environnement (prioritaires) :
 
 | Variable | Rôle |
@@ -82,6 +84,9 @@ nixpick --print-config
 | `nixpick --list-installed` | Attributs déjà dans `systemPackages` (une ligne par attr) |
 | `nixpick --list-installed --json` | Même liste en une ligne JSON (`attrs`, `count`, `packages_file`, `index_age_days`) |
 | `nixpick --undo` | Restaure le fichier configuré depuis la sauvegarde de la dernière écriture (pas de rebuild) |
+| `nixpick rebuild` | Lance `rebuild_command` (confirmation interactive) |
+| `nixpick rebuild -y` | Rebuild sans redemander (scripts) |
+| `nixpick rebuild -y --terminal` | Ouvre **kitty** / **foot** pour `sudo` et la sortie |
 | `nixpick doctor` | Vérifie fichier packages, cache index, verrou, outils (`nix-env`, Rofi), commande rebuild |
 | `nixpick doctor --json` | Même diagnostic en JSON |
 | `nixpick --why <attr>` | Indique si l’attribut est dans le fichier configuré (ligne approximative) |
@@ -103,7 +108,7 @@ Les entrées déjà présentes dans `systemPackages` sont marquées **●**.
 2. Choisir dans la liste · **✓** = déjà dans `systemPackages` (retrait proposé) · sans ✓ = ajout
 3. Aperçu **read-only** du diff (`+` / `-` autour de la ligne concernée), puis **Confirmer l'ajout** / **Confirmer le retrait** ou **Annuler** (sans notification)
 
-Après validation : notification avec la commande de rebuild configurée (`rebuild_command`) — **jamais** lancée automatiquement.
+Après validation : notification, puis menu **« Lancer le rebuild »** / **« Plus tard »** (rebuild dans un terminal kitty si tu acceptes). Sinon : `nixpick rebuild`.
 
 Thèmes : `assets/rofi/` dans le dépôt, ou `~/.config/rofi/nixpick*.rasi` (installés par `install.sh`).
 
@@ -111,7 +116,9 @@ Thèmes : `assets/rofi/` dans le dépôt, ou `~/.config/rofi/nixpick*.rasi` (ins
 
 - Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours)
 - Descriptions : `nix eval` à la demande pour les résultats affichés
-- **Jamais** de `nixos-rebuild` automatique — seulement rappel de `rebuild_command`
+- Rebuild **uniquement** si tu confirmes (`nixpick rebuild`, ou « Lancer le rebuild » en Rofi, ou `o` après un ajout CLI)
+- Si nixpick est un **input path** dans ton flake NixOS : après chaque changement du dépôt nixpick, mets à jour le lock avant rebuild : `cd /etc/nixos && nix flake lock --update-input nixpick` (`nixpick doctor` signale un hash périmé)
+- Variable optionnelle `NIXPICK_REBUILD_TERMINAL` (défaut : premier parmi kitty, foot, alacritty, wezterm)
 - Sauvegarde horodatée `packages.nix.bak.YYYYMMDD-HHMMSS` avant écriture ; métadonnées dans `~/.cache/nixpick/last-op.json` pour `nixpick --undo`
 
 ## Hyprland / Waybar (exemple)
