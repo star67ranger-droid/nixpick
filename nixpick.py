@@ -27,6 +27,7 @@ from engine import (
     packages_file,
     undo_last_write,
 )
+from fix_git_runner import run_fix_git
 from rebuild_runner import run_rebuild
 from rofi_mode import run_rofi
 from tui import run_tui
@@ -66,6 +67,26 @@ def main() -> int:
         "--terminal",
         action="store_true",
         help="ouvre un émulateur (kitty, foot…) pour sudo / la sortie",
+    )
+    rebuild_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="affiche la commande rebuild sans l'exécuter",
+    )
+    fix_git_parser = subparsers.add_parser(
+        "fix-git",
+        help="git add les fichiers non suivis (??) du dépôt flake NixOS",
+    )
+    fix_git_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="sans demander confirmation",
+    )
+    fix_git_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="affiche la commande git sans l'exécuter",
     )
     parser.add_argument(
         "--print-config",
@@ -148,6 +169,9 @@ def main() -> int:
             in_terminal=args.terminal,
             dry_run=args.dry_run,
         )
+
+    if args.command == "fix-git":
+        return run_fix_git(yes=args.yes, dry_run=args.dry_run)
 
     if args.print_config:
         s = get_settings()

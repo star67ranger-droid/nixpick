@@ -21,6 +21,7 @@ from engine import (
     packages_file,
     rebuild_command,
 )
+from flake_git import check_flake_untracked
 from flake_lock import check_nixpick_flake_lock
 
 
@@ -140,6 +141,11 @@ def _check_flake_lock() -> Check:
     return Check("flake.lock (input nixpick)", ok, detail.replace("\n", "\n      "))
 
 
+def _check_flake_git() -> Check:
+    ok, detail = check_flake_untracked()
+    return Check("Git flake (fichiers suivis)", ok, detail.replace("\n", "\n      "))
+
+
 def collect_checks() -> list[Check]:
     return [
         _check_packages_file(),
@@ -147,6 +153,7 @@ def collect_checks() -> list[Check]:
         _check_lock(),
         _check_nix_env(),
         _check_rofi(),
+        _check_flake_git(),
         _check_flake_lock(),
         _check_rebuild(),
     ]

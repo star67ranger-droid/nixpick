@@ -84,10 +84,12 @@ nixpick --print-config
 | `nixpick --list-installed` | Attributs déjà dans `systemPackages` (une ligne par attr) |
 | `nixpick --list-installed --json` | Même liste en une ligne JSON (`attrs`, `count`, `packages_file`, `index_age_days`) |
 | `nixpick --undo` | Restaure le fichier configuré depuis la sauvegarde de la dernière écriture (pas de rebuild) |
+| `nixpick fix-git` | `git add` des fichiers non suivis (??) du dépôt flake (confirmation) |
+| `nixpick fix-git -y` | Idem sans redemander |
 | `nixpick rebuild` | Lance `rebuild_command` (confirmation interactive) |
 | `nixpick rebuild -y` | Rebuild sans redemander (scripts) |
 | `nixpick rebuild -y --terminal` | Ouvre **kitty** / **foot** pour `sudo` et la sortie |
-| `nixpick doctor` | Vérifie fichier packages, cache index, verrou, outils (`nix-env`, Rofi), commande rebuild |
+| `nixpick doctor` | Fichier packages, cache index, verrou, **Git flake (fichiers suivis)**, flake.lock nixpick, outils, rebuild |
 | `nixpick doctor --json` | Même diagnostic en JSON |
 | `nixpick --why <attr>` | Indique si l’attribut est dans le fichier configuré (ligne approximative) |
 | `nixpick --transparent` / `--opaque` | Fond TUI (ANSI / Kitty) |
@@ -117,6 +119,7 @@ Thèmes : `assets/rofi/` dans le dépôt, ou `~/.config/rofi/nixpick*.rasi` (ins
 - Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours)
 - Descriptions : `nix eval` à la demande pour les résultats affichés
 - Rebuild **uniquement** si tu confirmes (`nixpick rebuild`, ou « Lancer le rebuild » en Rofi, ou `o` après un ajout CLI)
+- **Fichiers non suivis par Git** dans `/etc/nixos` : le flake ne voit pas les nouveaux chemins (`dotfiles/…`) tant qu’ils ne sont pas `git add`. `nixpick doctor` liste les `??` et propose la commande ; `nixpick rebuild` refuse de lancer `sudo` tant que c’est le cas (Rofi affiche un rappel).
 - Si nixpick est un **input path** dans ton flake NixOS : après chaque changement du dépôt nixpick, mets à jour le lock avant rebuild : `cd /etc/nixos && nix flake lock --update-input nixpick` (`nixpick doctor` signale un hash périmé)
 - Variable optionnelle `NIXPICK_REBUILD_TERMINAL` (défaut : premier parmi kitty, foot, alacritty, wezterm)
 - Sauvegarde horodatée `packages.nix.bak.YYYYMMDD-HHMMSS` avant écriture ; métadonnées dans `~/.cache/nixpick/last-op.json` pour `nixpick --undo`

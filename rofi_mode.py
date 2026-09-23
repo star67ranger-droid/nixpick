@@ -23,8 +23,10 @@ from engine import (
     search,
 )
 from messages import (
+    ROFI_CANCEL,
     ROFI_CONFIRM_ADD,
     ROFI_CONFIRM_REMOVE,
+    ROFI_FIX_GIT,
     ROFI_REBUILD_NOW,
     diff_preview_text,
     notify_add_failure,
@@ -121,15 +123,64 @@ def _rofi_preview(message: str) -> None:
 
 
 def _offer_rebuild() -> None:
-    answer = _rofi("Appliquer sur le système ?", rofi_rebuild_choices(), max_lines=2)
+    from flake_git import check_flake_untracked, rebuild_preflight_notify_body
+    from fix_git_runner import run_fix_git
+
+    def _exec_rebuild() -> None:
+        code = run_rebuild(yes=True, in_terminal=True)
+        if code != 0:
+            _notify(
+                "nixpick — rebuild",
+                f"Le rebuild a quitté avec le code {code}.\n"
+                "Relance : nixpick rebuild\n"
+                "Si « not tracked by Git » : nixpick doctor",
+            )
+
+    ok_git, _ = check_flake_untracked()
+    choices = rofi_rebuild_choices(git_ok=ok_git)
+    answer = _rofi("Appliquer sur le système ?", choices, max_lines=max(2, len(choices)))
+
+    if answer == ROFI_FIX_GIT:
+        code_git = run_fix_git(yes=True)
+        if code_git == 0:
+            _notify("nixpick — Git flake", "Fichiers ajoutés au suivi Git.\nLancement du rebuild…")
+            _exec_rebuild()
+        else:
+            _notify(
+                "nixpick — Git flake",
+                "Échec de fix-git.\nLance dans un terminal : nixpick fix-git",
+            )
+        return
+
     if answer != ROFI_REBUILD_NOW:
         return
-    code = run_rebuild(yes=True, in_terminal=True)
-    if code != 0:
-        _notify(
-            "nixpick — rebuild",
-            f"Le rebuild a quitté avec le code {code}.\nRelance : nixpick rebuild",
+
+    preflight = rebuild_preflight_notify_body()
+    if preflight:
+        _notify("nixpick — Git flake", preflight)
+        choice = _rofi(
+            "Git flake : fichiers non suivis",
+            [ROFI_FIX_GIT, ROFI_CANCEL],
+            max_lines=2,
         )
+        if choice == ROFI_FIX_GIT:
+            code_git = run_fix_git(yes=True)
+            if code_git == 0:
+                _notify(
+                    "nixpick — Git flake",
+                    "Fichiers ajoutés au suivi Git.\nLancement du rebuild…",
+                )
+                _exec_rebuild()
+            else:
+                _notify(
+                    "nixpick — Git flake",
+                    "Échec de fix-git.\nLance dans un terminal : nixpick fix-git",
+                )
+            return
+        _rofi_preview(preflight)
+        return
+
+    _exec_rebuild()
 
 
 def _notify(title: str, body: str) -> None:

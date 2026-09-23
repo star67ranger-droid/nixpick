@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nixpick"
-version = "0.3.2"
+version = "0.3.4"
 description = "Recherche nixpkgs et édition déclarative de environment.systemPackages (NixOS)"
 readme = "README.md"
 license = "MIT"
@@ -43,6 +43,8 @@ py-modules = [
   "messages",
   "doctor",
   "rebuild_runner",
+  "flake_git",
+  "fix_git_runner",
   "flake_lock",
   "rofi_theme",
   "tui_css",

@@ -14,6 +14,7 @@ from rebuild_runner import rebuild_command_argv, run_rebuild
 @pytest.fixture(autouse=True)
 def _env_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NIXPICK_REBUILD_COMMAND", "echo nixos-rebuild-test")
+    monkeypatch.setattr("flake_git.rebuild_preflight_message", lambda: None)
     reset_settings_cache()
 
 
@@ -32,9 +33,18 @@ def test_run_rebuild_declines_without_yes(monkeypatch: pytest.MonkeyPatch) -> No
     assert run_rebuild(yes=False) == 0
 
 
-def test_run_rebuild_runs_with_yes() -> None:
+def test_run_rebuild_runs_with_yes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("flake_git.rebuild_preflight_message", lambda: None)
     with mock.patch("subprocess.run") as run:
         run.return_value = mock.Mock(returncode=0)
         assert run_rebuild(yes=True) == 0
         run.assert_called_once()
         assert run.call_args[0][0] == "echo nixos-rebuild-test"
+
+
+def test_run_rebuild_blocked_by_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "flake_git.rebuild_preflight_message",
+        lambda: "Rebuild bloqué avant lancement",
+    )
+    assert run_rebuild(yes=True) == 1

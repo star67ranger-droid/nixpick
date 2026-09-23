@@ -11,6 +11,7 @@ ROFI_CONFIRM_REMOVE = "Confirmer le retrait"
 ROFI_CANCEL = "Annuler"
 ROFI_REBUILD_NOW = "󰐊 Lancer le rebuild"
 ROFI_REBUILD_LATER = "Plus tard"
+ROFI_FIX_GIT = "󰊢 Corriger Git (fix-git)"
 
 
 def cli_cancelled() -> str:
@@ -90,7 +91,9 @@ def notify_dry_run_add(attr: str) -> tuple[str, str]:
     )
 
 
-def rofi_rebuild_choices() -> list[str]:
+def rofi_rebuild_choices(*, git_ok: bool = True) -> list[str]:
+    if not git_ok:
+        return [ROFI_FIX_GIT, ROFI_REBUILD_NOW, ROFI_REBUILD_LATER]
     return [ROFI_REBUILD_NOW, ROFI_REBUILD_LATER]
 
 

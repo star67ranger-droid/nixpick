@@ -34,6 +34,13 @@ def run_rebuild(
         print(f"[dry-run] {cmd}")
         return 0
 
+    from flake_git import rebuild_preflight_message
+
+    preflight = rebuild_preflight_message()
+    if preflight:
+        print(preflight, file=sys.stderr)
+        return 1
+
     if not yes:
         if not sys.stdin.isatty():
             print(
@@ -66,15 +73,23 @@ def run_rebuild(
 
 
 def _print_rebuild_hints() -> None:
-    from flake_lock import check_nixpick_flake_lock, flake_lock_update_hint
-    from engine import packages_file
+    from flake_git import check_flake_untracked
+    from flake_lock import check_nixpick_flake_lock, flake_lock_update_hint, nixos_flake_root
 
     print("\n— Aide nixpick (relis l’erreur Nix ci-dessus) —", file=sys.stderr)
-    print(
-        "  • Fichier « not tracked by Git » : le flake ne voit que ce qui est "
-        "dans git — ex. git -C /etc/nixos add dotfiles/…/fichier",
-        file=sys.stderr,
-    )
+    ok_git, git_detail = check_flake_untracked()
+    if not ok_git:
+        print("  • Fichiers non suivis par Git :", file=sys.stderr)
+        for line in git_detail.splitlines():
+            print(f"    {line}", file=sys.stderr)
+    else:
+        root = nixos_flake_root()
+        hint_root = str(root) if root else "/etc/nixos"
+        print(
+            f"  • Fichier « not tracked by Git » : le flake ne voit que ce qui est "
+            f"dans git — ex. git -C {hint_root} add dotfiles/…/fichier",
+            file=sys.stderr,
+        )
     ok, _detail = check_nixpick_flake_lock()
     if not ok:
         from flake_lock import nixos_flake_root
