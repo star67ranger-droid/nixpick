@@ -8,6 +8,11 @@
 - **UX** : repli stderr si pas de `notify-send` ; CLI rebuild + preflight fix-git ; doctor rebuild vide
 - **Défaut** : `rebuild_command` avec `--flake /etc/nixos#nixos`
 
+## 0.3.5.1 — 2026-09-23
+
+- **Packaging Nix** : `asset_path()` trouve `share/nixpick` dans le store (pas seulement `sys.prefix`)
+- **CI** : PR Dependabot ouvertes (checkout / setup-python / nix-installer) — à merger quand tu veux
+
 ## 0.3.4 — 2026-09-23
 
 - **`nixpick fix-git`** : exécute `git add` sur les fichiers `??` du dépôt flake (après confirmation)

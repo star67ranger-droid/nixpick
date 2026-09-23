@@ -11,7 +11,7 @@
     {
       packages.${system}.default = pkgs.python3Packages.buildPythonApplication {
         pname = "nixpick";
-        version = "0.3.5";
+        version = "0.3.5.1";
         pyproject = true;
         src = ./.;
         nativeBuildInputs = with pkgs.python3Packages; [

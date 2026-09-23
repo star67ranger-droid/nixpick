@@ -8,7 +8,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-__version__ = "0.3.5"
+__version__ = "0.3.5.1"
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path.home() / ".config" / "nixpick"
