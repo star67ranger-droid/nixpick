@@ -11,7 +11,7 @@
     {
       packages.${system}.default = pkgs.python3Packages.buildPythonApplication {
         pname = "nixpick";
-        version = "0.3.4";
+        version = "0.3.5";
         pyproject = true;
         src = ./.;
         nativeBuildInputs = with pkgs.python3Packages; [
@@ -28,6 +28,7 @@
       apps.${system}.default = {
         type = "app";
         program = "${self.packages.${system}.default}/bin/nixpick";
+        meta.description = "nixpick CLI (recherche nixpkgs, édition packages.nix)";
       };
 
       formatter.${system} = pkgs.nixpkgs-fmt;

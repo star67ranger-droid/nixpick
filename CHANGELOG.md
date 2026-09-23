@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.5 — 2026-09-23
+
+- **CI** : identité git pour les tests ; job `nix flake check` ; Dependabot actions + pip
+- **fix-git** : `git add --`, lots ; chemins limités au répertoire flake ; erreurs git explicites
+- **Packaging** : assets Rofi et `config.example.toml` dans `share/nixpick/`
+- **UX** : repli stderr si pas de `notify-send` ; CLI rebuild + preflight fix-git ; doctor rebuild vide
+- **Défaut** : `rebuild_command` avec `--flake /etc/nixos#nixos`
+
 ## 0.3.4 — 2026-09-23
 
 - **`nixpick fix-git`** : exécute `git add` sur les fichiers `??` du dépôt flake (après confirmation)

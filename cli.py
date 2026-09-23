@@ -82,6 +82,13 @@ def _maybe_rebuild_after_cli() -> int:
         return 0
     if answer not in ("o", "oui", "y"):
         return 0
+    from flake_git import rebuild_preflight_message
+
+    preflight = rebuild_preflight_message()
+    if preflight:
+        say(preflight)
+        say("\nLance : nixpick fix-git --yes   puis   nixpick rebuild")
+        return 1
     return run_rebuild(yes=True, in_terminal=False)
 
 

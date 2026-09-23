@@ -70,7 +70,7 @@ def _check_index() -> Check:
             "Cache index",
             False,
             f"Pas d'index dans {index_file.parent} "
-            "(lancez nixpick --build-index-only ou ouvrez la TUI).",
+            "(lance nixpick --build-index-only ou ouvre la TUI).",
         )
     age = index_age_days()
     age_str = f"{age:.1f}" if age is not None else "?"
@@ -129,10 +129,17 @@ def _check_rofi() -> Check:
 
 
 def _check_rebuild() -> Check:
+    cmd = rebuild_command().strip()
+    if not cmd:
+        return Check(
+            "Commande rebuild",
+            False,
+            "rebuild_command vide — configure config.toml ou NIXPICK_REBUILD_COMMAND.",
+        )
     return Check(
         "Commande rebuild",
         True,
-        f"Après ajout ou retrait : {rebuild_command()}",
+        f"Après ajout ou retrait : {cmd}",
     )
 
 

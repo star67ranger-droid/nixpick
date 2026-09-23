@@ -8,7 +8,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path.home() / ".config" / "nixpick"
@@ -17,7 +17,7 @@ SUPERFILE_CONFIG = Path.home() / ".config" / "superfile/config.toml"
 
 DEFAULT_PACKAGES_FILE = Path("/etc/nixos/modules/packages.nix")
 DEFAULT_ANCHOR = "environment.systemPackages"
-DEFAULT_REBUILD = "sudo nixos-rebuild switch"
+DEFAULT_REBUILD = "sudo nixos-rebuild switch --flake /etc/nixos#nixos"
 
 
 @dataclass(frozen=True)
@@ -129,7 +129,15 @@ def reset_settings_cache() -> None:
 
 
 def asset_path(*parts: str) -> Path:
-    return PACKAGE_ROOT.joinpath("assets", *parts)
+    """Fichiers embarqués (dev : dépôt ; install : share/nixpick/)."""
+    local = PACKAGE_ROOT.joinpath("assets", *parts)
+    if local.exists():
+        return local
+    share = Path(__import__("sys").prefix) / "share" / "nixpick"
+    installed = share.joinpath(*parts)
+    if installed.exists():
+        return installed
+    return local
 
 
 def rofi_theme_paths(query_only: bool) -> list[Path]:

@@ -8,6 +8,7 @@ from config import CONFIG_DIR, asset_path
 from theme import ColorPalette, RofiColors, get_color_palette
 
 _ROFI_TEMPLATE = """/* Généré par nixpick — ne pas éditer (voir docs/THEMES.md) */
+/* comment (palette) : {comment} */
 configuration {{
   modi: "dmenu";
 }}
@@ -83,6 +84,7 @@ def _format_rofi(template: str, c: RofiColors) -> str:
         entry_text=c.entry_text,
         selected_background=c.selected_background,
         selected_text=c.selected_text,
+        comment=c.comment,
     )
 
 

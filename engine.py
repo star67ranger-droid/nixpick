@@ -112,7 +112,12 @@ def load_index(refresh: bool = False, on_status: StatusCallback | None = None) -
         if on_status:
             on_status(f"Index vieux de {age:.0f} jours, reconstruction…")
         return build_index(on_status)
-    return json.loads(INDEX_FILE.read_text())
+    try:
+        return json.loads(INDEX_FILE.read_text())
+    except (json.JSONDecodeError, OSError) as err:
+        if on_status:
+            on_status(f"Index illisible ({err}), reconstruction…")
+        return build_index(on_status)
 
 
 def attr_name(key: str) -> str:

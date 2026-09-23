@@ -42,6 +42,16 @@ cp config.example.toml ~/.config/nixpick/config.toml
 pip install -e .
 ```
 
+### Flake NixOS (input Git)
+
+```nix
+inputs.nixpick.url = "github:star67ranger-droid/nixpick";
+# …
+environment.systemPackages = [ pkgs.nixpick ];
+```
+
+Après mise à jour du dépôt : `nix flake lock --update-input nixpick` puis rebuild.
+
 ## Configuration
 
 Fichier : `~/.config/nixpick/config.toml`
@@ -110,7 +120,7 @@ Les entrées déjà présentes dans `systemPackages` sont marquées **●**.
 2. Choisir dans la liste · **✓** = déjà dans `systemPackages` (retrait proposé) · sans ✓ = ajout
 3. Aperçu **read-only** du diff (`+` / `-` autour de la ligne concernée), puis **Confirmer l'ajout** / **Confirmer le retrait** ou **Annuler** (sans notification)
 
-Après validation : notification, puis menu **« Lancer le rebuild »** / **« Plus tard »** (rebuild dans un terminal kitty si tu acceptes). Sinon : `nixpick rebuild`.
+Après validation : notification, puis menu **« Corriger Git (fix-git) »** (si des `??` bloquent le flake), **« Lancer le rebuild »** / **« Plus tard »**. Le rebuild s’ouvre dans un terminal (kitty, foot, …) si tu acceptes. Sinon : `nixpick rebuild`.
 
 Thèmes : `assets/rofi/` dans le dépôt, ou `~/.config/rofi/nixpick*.rasi` (installés par `install.sh`).
 

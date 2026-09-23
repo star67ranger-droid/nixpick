@@ -629,7 +629,7 @@ class NixPickApp(App[None]):
         self.query_one("#detail-name", Label).update("rien trouvé")
         self.query_one("#detail-meta", Label).update("")
         self.query_one("#detail-body", Static).update(
-            "[dim]Essaie un mot plus court, ou [b]r[/] pour rafraîchir l'index.[/]"
+            "[dim]Essaie un mot plus court, ou [b]Ctrl+R[/] pour rafraîchir l'index.[/]"
         )
         self.query_one("#detail-hint", Static).update("")
 

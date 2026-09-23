@@ -61,9 +61,18 @@ def run_rebuild(
     if in_terminal:
         term = os.environ.get("NIXPICK_REBUILD_TERMINAL", "").strip() or _default_terminal()
         if term:
-            inner = f"{cmd}; echo; read -r -p 'Terminé — Entrée pour fermer…' _"
+            inner = (
+                f"{shlex.quote(cmd)}; echo; "
+                "read -r -p 'Terminé — Entrée pour fermer…' _"
+            )
             proc = subprocess.run([term, "-e", "bash", "-lc", inner], check=False)
             return int(proc.returncode or 0)
+        print(
+            "Rebuild terminal : aucun émulateur trouvé (kitty, foot, alacritty, wezterm).",
+            file=sys.stderr,
+        )
+        print(f"Lance manuellement : {cmd}", file=sys.stderr)
+        return 1
 
     proc = subprocess.run(cmd, shell=True, check=False)
     code = int(proc.returncode or 0)

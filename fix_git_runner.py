@@ -2,26 +2,39 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
-from pathlib import Path
 
 from flake_git import (
     check_flake_untracked,
     format_git_add_command,
+    git_add_untracked,
+    git_top_for_flake,
+    list_untracked_paths,
     untracked_git_add_target,
 )
+from flake_lock import nixos_flake_root
 
 
 def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
+    flake_root = nixos_flake_root()
+    if flake_root is None:
+        print("Pas de flake NixOS détecté (packages_file hors arbre flake).", file=sys.stderr)
+        return 1
+
+    if git_top_for_flake(flake_root) is None:
+        print(f"{flake_root} : pas de dépôt git — fix-git impossible.", file=sys.stderr)
+        return 1
+
+    paths, err = list_untracked_paths(flake_root)
+    if err:
+        print(err, file=sys.stderr)
+        return 1
+
     target = untracked_git_add_target()
     if target is None:
         ok, detail = check_flake_untracked()
-        if ok:
-            print("Aucun fichier non suivi (??) dans le dépôt du flake.")
-            return 0
-        print(detail, file=sys.stderr)
-        return 1
+        print(detail)
+        return 0 if ok else 1
 
     git_top, paths = target
     shown = paths[:20]
@@ -53,19 +66,10 @@ def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
         if answer not in ("o", "oui", "y", "yes"):
             return 0
 
-    try:
-        proc = subprocess.run(
-            ["git", "-C", str(git_top), "add", *paths],
-            check=False,
-            timeout=120,
-        )
-    except (OSError, subprocess.TimeoutExpired) as err:
-        print(f"git add a échoué : {err}", file=sys.stderr)
-        return 1
-
-    if proc.returncode != 0:
-        print(f"git add a quitté avec le code {proc.returncode}.", file=sys.stderr)
-        return int(proc.returncode or 1)
+    code = git_add_untracked(git_top, paths)
+    if code != 0:
+        print(f"git add a quitté avec le code {code}.", file=sys.stderr)
+        return code
 
     print(f"{len(paths)} fichier(s) ajoutés au suivi git.")
     print("Étape suivante : git commit (si tu veux versionner), puis nixpick rebuild")

@@ -184,16 +184,17 @@ def _offer_rebuild() -> None:
 
 
 def _notify(title: str, body: str) -> None:
-    if not shutil.which("notify-send"):
-        return
-    try:
-        subprocess.run(
-            ["notify-send", "-a", "nixpick", "-u", "normal", title, body],
-            check=False,
-            timeout=5,
-        )
-    except Exception:
-        return
+    if shutil.which("notify-send"):
+        try:
+            subprocess.run(
+                ["notify-send", "-a", "nixpick", "-u", "normal", title, body],
+                check=False,
+                timeout=5,
+            )
+            return
+        except Exception:
+            pass
+    print(f"{title}\n{body}", file=sys.stderr)
 
 
 def _confirm_plan(
