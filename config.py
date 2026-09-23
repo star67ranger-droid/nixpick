@@ -128,15 +128,31 @@ def reset_settings_cache() -> None:
     _settings = None
 
 
+def _installed_asset_roots() -> list[Path]:
+    """Répertoires ``share/nixpick`` (venv, Nix store, /usr)."""
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for base in PACKAGE_ROOT.parents:
+        candidate = base / "share" / "nixpick"
+        if candidate.is_dir() and candidate not in seen:
+            roots.append(candidate)
+            seen.add(candidate)
+            break
+    prefix_share = Path(__import__("sys").prefix) / "share" / "nixpick"
+    if prefix_share.is_dir() and prefix_share not in seen:
+        roots.append(prefix_share)
+    return roots
+
+
 def asset_path(*parts: str) -> Path:
     """Fichiers embarqués (dev : dépôt ; install : share/nixpick/)."""
     local = PACKAGE_ROOT.joinpath("assets", *parts)
     if local.exists():
         return local
-    share = Path(__import__("sys").prefix) / "share" / "nixpick"
-    installed = share.joinpath(*parts)
-    if installed.exists():
-        return installed
+    for root in _installed_asset_roots():
+        installed = root.joinpath(*parts)
+        if installed.exists():
+            return installed
     return local
 
 
