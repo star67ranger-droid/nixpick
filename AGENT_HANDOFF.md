@@ -7,7 +7,7 @@
 - **v0.3.4** : `fix-git`, preflight flake Git, Rofi « Corriger Git ».
 - **v0.3.5** : audit (CI git, `nix flake check`, Dependabot, packaging `share/nixpick`, fix-git ciblé flake).
 - **v0.3.5.1** : `asset_path` sous paquet Nix.
-- **CI** : verte (pytest 56 + flake). **Releases** : v0.3.5 sur GitHub ; tag **v0.3.5.1** à pousser avec ce commit.
+- **CI** : verte (pytest 56 + flake). **Releases GitHub** : v0.3.5, v0.3.5.1 (`a9445cf`).
 - **Dependabot** : 3 PR Actions ouvertes (non mergées — à valider toi si tu veux).
 
 ## Prochaine session (Pikeo, machine réelle)
