@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Any
 
 from config import _load_toml
 
@@ -75,8 +76,10 @@ def _merge_table(defaults: dict[str, str], table: dict | None, fields: set[str])
 
 def load_color_palette() -> ColorPalette:
     data = _load_toml()
-    root = data.get("colors") if isinstance(data.get("colors"), dict) else {}
-    rofi_table = root.get("rofi") if isinstance(root.get("rofi"), dict) else {}
+    raw_colors = data.get("colors")
+    root: dict[str, Any] = raw_colors if isinstance(raw_colors, dict) else {}
+    raw_rofi = root.get("rofi")
+    rofi_table: dict[str, Any] = raw_rofi if isinstance(raw_rofi, dict) else {}
 
     tui_defaults = {k: getattr(TuiColors(), k) for k in _TUI_FIELDS}
     rofi_defaults = {k: getattr(RofiColors(), k) for k in _ROFI_FIELDS}

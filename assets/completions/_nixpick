@@ -1,0 +1,49 @@
+#compdef nixpick
+# Complétion zsh pour nixpick.
+# Installation : copie dans un répertoire de `$fpath` sous le nom `_nixpick`.
+# Synchro avec le CLI testée par tests/test_completions.py.
+_nixpick() {
+    local context state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '--version[affiche la version et quitte]' \
+        '--print-config[affiche le fichier cible et la commande rebuild]' \
+        '--refresh[reconstruit lindex nixpkgs au démarrage]' \
+        '--dry-run[simulation : necrit pas dans packages.nix]' \
+        '--transparent[TUI : fond transparent]' \
+        '--opaque[TUI : fond opaque]' \
+        '--tui[force la TUI même avec un terme]' \
+        '--rofi[recherche via Rofi]' \
+        '--build-index-only[reconstruit lindex puis quitte]' \
+        '--remove[retire un paquet (avec le terme CLI)]' \
+        '--list-installed[liste les attributs déjà présents]' \
+        '--json[avec --list-installed : sortie JSON]' \
+        '--undo[restaure packages.nix depuis la dernière sauvegarde]' \
+        '--why[dit si un attribut est dans packages.nix]:attr:' \
+        '(-h --help)'{-h,--help}'[affiche laide]' \
+        '1:commande:(doctor rebuild fix-git)' \
+        '*::options:->args' && return 0
+
+    case "$line[1]" in
+        doctor)
+            _arguments '--json[sortie JSON]' '(-h --help)'{-h,--help}'[affiche laide]' && return 0
+            ;;
+        rebuild)
+            _arguments \
+                '(-y --yes)'{-y,--yes}'[sans demander confirmation]' \
+                '--terminal[ouvre un émulateur pour sudo / la sortie]' \
+                '--dry-run[affiche la commande sans lexécuter]' \
+                '(-h --help)'{-h,--help}'[affiche laide]' && return 0
+            ;;
+        fix-git)
+            _arguments \
+                '(-y --yes)'{-y,--yes}'[sans demander confirmation]' \
+                '--dry-run[affiche la commande git sans lexécuter]' \
+                '(-h --help)'{-h,--help}'[affiche laide]' && return 0
+            ;;
+    esac
+    return 1
+}
+
+_nixpick "$@"

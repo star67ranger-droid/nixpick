@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.16"]
+dev = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.16", "mypy>=1.18"]
 
 [project.urls]
 Homepage = "https://github.com/star67ranger-droid/nixpick"
@@ -87,3 +87,16 @@ select = [
   "S110", # try/except/pass
   "BLE001", # except aveugle
 ]
+
+[tool.mypy]
+# Socle typage : engine.py (+ config/theme suivis en import).
+# tui.py hors périmètre (API opentui non typée, Any structurel).
+python_version = "3.12"
+
+[tool.coverage.run]
+# Utilisé uniquement en CI (job pytest) : le sandbox Nix n'a pas pytest-cov,
+# donc pas de --cov dans addopts (sinon `nix flake check` casse).
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true

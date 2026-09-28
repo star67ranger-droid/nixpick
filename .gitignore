@@ -9,3 +9,11 @@ build/
 .cursor/
 result
 .env
+
+# Infra agent locale (non versionnée)
+.ai-memory.toml
+AGENTS.md
+
+# Artefacts de test/couverture
+.coverage
+coverage.xml

@@ -44,8 +44,14 @@
         nativeBuildInputs = with python; [
           setuptools
           wheel
-        ];
+        ] ++ [ pkgs.installShellFiles ];
         propagatedBuildInputs = [ opentui ];
+        postInstall = ''
+          installShellCompletion --cmd nixpick \
+            --bash ${./assets/completions/nixpick.bash} \
+            --fish ${./assets/completions/nixpick.fish} \
+            --zsh ${./assets/completions/_nixpick}
+        '';
         nativeCheckInputs = with python; [ pytestCheckHook ] ++ [ pkgs.git ];
         checkInputs = [ python.pytest opentui ];
         doCheck = true;

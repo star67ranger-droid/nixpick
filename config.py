@@ -8,6 +8,7 @@ import shlex
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 __version__ = "0.4.0"
 
@@ -126,7 +127,8 @@ def get_settings() -> Settings:
         return _settings
 
     data = _load_toml()
-    nix = data.get("nixpick") if isinstance(data.get("nixpick"), dict) else data
+    raw_nix = data.get("nixpick")
+    nix: dict[str, Any] = raw_nix if isinstance(raw_nix, dict) else data
 
     packages_raw = os.environ.get("NIXPICK_PACKAGES_FILE") or nix.get(
         "packages_file", str(DEFAULT_PACKAGES_FILE)

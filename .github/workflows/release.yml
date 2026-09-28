@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notes depuis le CHANGELOG
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v ver="$ver" '
+            function is_header(line) {
+              if (index(line, "## " ver) != 1) return 0
+              rest = substr(line, length("## " ver) + 1)
+              return rest == "" || substr(rest, 1, 1) == " "
+            }
+            is_header($0) { flag = 1; next }
+            /^## / { flag = 0 }
+            flag
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || {
+            echo "pas de section pour $ver dans CHANGELOG.md" >&2
+            exit 1
+          }
+      - name: Créer la release GitHub
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

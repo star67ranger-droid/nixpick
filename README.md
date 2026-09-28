@@ -104,6 +104,23 @@ nixpick --print-config
 | `nixpick --why <attr>` | Indique si l’attribut est dans le fichier configuré (ligne approximative) |
 | `nixpick --transparent` / `--opaque` | Fond TUI (ANSI / Kitty) |
 
+### Complétion shell
+
+Fichiers dans `assets/completions/` (bash, zsh, fish) — synchro avec le CLI
+testée (`tests/test_completions.py`).
+
+```bash
+# bash (~/.bashrc)
+source /chemin/nixpick/assets/completions/nixpick.bash
+# zsh (dossier dans $fpath, fichier nommé _nixpick)
+cp assets/completions/_nixpick ~/.local/share/zsh/site-functions/
+# fish
+cp assets/completions/nixpick.fish ~/.config/fish/completions/
+```
+
+Via le flake Nix, les complétions sont installées automatiquement
+(`installShellCompletion`).
+
 ### TUI — raccourcis
 
 Style **fuzzy-finder** : recherche centrée en haut, liste à gauche (`▸` sélection,
