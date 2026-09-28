@@ -9,6 +9,7 @@ import pytest
 from flake_git import (
     check_flake_untracked,
     format_git_add_command,
+    git_add_untracked,
     list_untracked_paths,
     rebuild_preflight_message,
     rebuild_preflight_notify_body,
@@ -132,3 +133,25 @@ def test_preflight_notify_body_untracked(flake_repo: Path) -> None:
     assert "git -C" in body
     assert "orphan.nix" in body
     assert "nixpick rebuild" in body
+
+
+def test_git_add_untracked_skips_flag_like_paths(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    recorded: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        recorded.append(list(argv))
+        class _Proc:
+            returncode = 0
+
+        return _Proc()
+
+    monkeypatch.setattr("flake_git.subprocess.run", fake_run)
+    assert git_add_untracked(Path("/etc/nixos"), ["--evil", "ok.txt"]) == 0
+    assert recorded == [["git", "-C", "/etc/nixos", "add", "--", "ok.txt"]]
+    assert "ignoré" in capsys.readouterr().err
+
+    recorded.clear()
+    assert git_add_untracked(Path("/etc/nixos"), ["--only-bad"]) == 1
+    assert recorded == []
