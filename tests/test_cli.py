@@ -10,6 +10,7 @@ import pytest
 import cli
 import engine
 from config import reset_settings_cache
+from engine import NixCommandError
 
 SAMPLE = """{ config, pkgs, ... }:
 {
@@ -88,6 +89,16 @@ def test_cli_add_sans_resultat(
     packages_nix: Path, fake_index: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert cli.run_cli("zzzz-introuvable", refresh=False, dry_run=False) == 1
+
+
+def test_cli_load_index_failure_returns_one(
+    packages_nix: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_load(**kwargs: object) -> dict:
+        raise NixCommandError("nix-env indisponible")
+
+    monkeypatch.setattr(cli, "load_index", fail_load)
+    assert cli.run_cli("htop", refresh=False, dry_run=False) == 1
 
 
 def test_cli_remove_confirme_retire(

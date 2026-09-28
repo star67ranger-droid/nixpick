@@ -34,6 +34,18 @@ def test_remove_sans_termne_renvoie_2(
     assert "--remove" in err and "terme" in err
 
 
+def test_config_invalide_renvoie_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad = tmp_path / "packages.txt"
+    bad.write_text("not nix", encoding="utf-8")
+    monkeypatch.setenv("NIXPICK_PACKAGES_FILE", str(bad))
+    reset_settings_cache()
+    monkeypatch.setattr("sys.argv", ["nixpick", "--print-config"])
+    assert main() == 1
+    assert ".nix" in capsys.readouterr().err
+
+
 def test_rofi_sans_rofi_renvoie_1(
     clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

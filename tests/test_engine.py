@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
 import engine as engine_module
 from config import reset_settings_cache
 from engine import (
+    NixCommandError,
     PackageIndex,
     PackageRow,
     find_package_line_index,
     list_installed_attrs,
     plan_add,
     plan_remove,
+    run,
     search_index,
 )
 
@@ -110,6 +114,48 @@ def test_parser_counts_nested_lists_and_ignores_comment_brackets(packages_nix: P
     ]
     insert_at, _indent = _find_insertion_point(lines)
     assert insert_at == 5
+
+
+def test_run_maps_subprocess_failures_to_nix_command_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        mock.Mock(side_effect=FileNotFoundError("nix-env")),
+    )
+    with pytest.raises(NixCommandError, match="introuvable"):
+        run(["nix-env", "-qaP", "--json"], timeout=60)
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        mock.Mock(
+            side_effect=subprocess.TimeoutExpired(cmd=["nix-env"], timeout=600),
+        ),
+    )
+    with pytest.raises(NixCommandError, match="600"):
+        run(["nix-env"], timeout=600)
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        mock.Mock(
+            side_effect=subprocess.CalledProcessError(
+                1, ["nix-env"], stderr="evaluation aborted",
+            ),
+        ),
+    )
+    with pytest.raises(NixCommandError, match="evaluation aborted"):
+        run(["nix-env"], timeout=10)
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        mock.Mock(side_effect=OSError(13, "Permission denied")),
+    )
+    with pytest.raises(NixCommandError, match="Permission denied"):
+        run(["nix-env"], timeout=10)
 
 
 def test_fetch_descriptions_skips_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
