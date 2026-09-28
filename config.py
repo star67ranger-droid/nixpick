@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-__version__ = "0.3.5.1"
+__version__ = "0.3.6"
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path.home() / ".config" / "nixpick"
@@ -24,7 +25,7 @@ DEFAULT_REBUILD = "sudo nixos-rebuild switch --flake /etc/nixos#nixos"
 class Settings:
     packages_file: Path
     packages_anchor: str
-    rebuild_command: str
+    rebuild_command: tuple[str, ...]
 
 
 _settings: Settings | None = None
@@ -37,7 +38,7 @@ def _parse_bool(value: str) -> bool:
 def _read_transparent_from_toml(path: Path) -> bool | None:
     if not path.exists():
         return None
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     match = re.search(
         r"^\s*transparent_background\s*=\s*(true|false)\s*$",
         text,
@@ -61,7 +62,7 @@ def load_transparent_background() -> bool:
 
 def save_transparent_background(enabled: bool) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = CONFIG_FILE.read_text() if CONFIG_FILE.exists() else ""
+    existing = CONFIG_FILE.read_text(encoding="utf-8") if CONFIG_FILE.exists() else ""
     if "transparent_background" in existing:
         text = re.sub(
             r"^\s*transparent_background\s*=\s*.+$",
@@ -76,7 +77,31 @@ def save_transparent_background(enabled: bool) -> None:
             + ("true" if enabled else "false")
             + "\n"
         )
-    CONFIG_FILE.write_text(text if text.endswith("\n") else text + "\n")
+    content = text if text.endswith("\n") else text + "\n"
+    _atomic_write_config(CONFIG_FILE, content)
+
+
+def _atomic_write_config(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import tempfile
+
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+class ConfigError(ValueError):
+    """config.toml présent mais illisible (TOML invalide ou lecture en échec)."""
 
 
 def _load_toml() -> dict:
@@ -85,9 +110,14 @@ def _load_toml() -> dict:
     try:
         with CONFIG_FILE.open("rb") as fh:
             data = tomllib.load(fh)
-        return data if isinstance(data, dict) else {}
-    except (tomllib.TOMLDecodeError, OSError):
-        return {}
+    except tomllib.TOMLDecodeError as err:
+        raise ConfigError(
+            f"{CONFIG_FILE} : TOML invalide — {err} "
+            "(compare avec config.example.toml)."
+        ) from err
+    except OSError as err:
+        raise ConfigError(f"{CONFIG_FILE} illisible — {err}") from err
+    return data if isinstance(data, dict) else {}
 
 
 def get_settings() -> Settings:
@@ -113,11 +143,21 @@ def get_settings() -> Settings:
     rebuild = os.environ.get("NIXPICK_REBUILD_COMMAND") or nix.get(
         "rebuild_command", DEFAULT_REBUILD
     )
+    if isinstance(rebuild, str):
+        # Backward compatibility: old configs used a shell-like command string.
+        # Parse arguments, but never evaluate shell operators or substitutions.
+        rebuild_argv = tuple(shlex.split(rebuild))
+    elif isinstance(rebuild, list) and all(isinstance(arg, str) for arg in rebuild):
+        rebuild_argv = tuple(rebuild)
+    else:
+        raise ValueError("rebuild_command doit être une chaîne ou une liste d'arguments")
+    if not rebuild_argv or any(not arg for arg in rebuild_argv):
+        raise ValueError("rebuild_command ne peut pas être vide")
 
     _settings = Settings(
         packages_file=packages_path,
         packages_anchor=str(anchor).strip(),
-        rebuild_command=str(rebuild).strip(),
+        rebuild_command=rebuild_argv,
     )
     return _settings
 
@@ -126,6 +166,11 @@ def reset_settings_cache() -> None:
     """Tests / rechargement après écriture de config."""
     global _settings
     _settings = None
+
+
+def format_rebuild_command() -> str:
+    """Affichage lisible de rebuild_command (argv, pas d'interprétation shell)."""
+    return shlex.join(get_settings().rebuild_command)
 
 
 def _installed_asset_roots() -> list[Path]:

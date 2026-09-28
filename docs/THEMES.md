@@ -8,20 +8,20 @@ Les valeurs sont des couleurs **hex** : `#RRGGBB` ou `#RGB` (raccourci).
 
 ```toml
 [colors]
-# TUI Textual (nixpick sans argument)
-background = "#2c2d31"
-surface = "#232326"
-surface_elevated = "#35363b"
-text = "#a7aab0"
-text_muted = "#737994"
-primary = "#57a5e5"
-accent = "#51a8b3"
-accent_alt = "#bb70d2"
-warning = "#e5c07b"
-success = "#8fb573"
-danger = "#e06c75"
-detail_title = "#dbb671"
-list_highlight_bg = "#2c2d31"
+# TUI OpenTUI (nixpick sans argument) — neutres zinc + un seul accent bleu
+background = "#17181c"
+surface = "#101114"
+surface_elevated = "#212328"
+text = "#c8ccd2"
+text_muted = "#838a94"
+primary = "#7ba4e0"
+accent = "#8ab7ea"
+accent_alt = "#6f9ad6"
+warning = "#d6b072"
+success = "#8cb37f"
+danger = "#d9757e"
+detail_title = "#838a94"
+list_highlight_bg = "#21242a"
 
 [colors.rofi]
 # Mode nixpick --rofi / nixpick-rofi
@@ -35,24 +35,27 @@ selected_text = "#ffdbd0"
 comment = "#8b8478"
 ```
 
-Tu n’es pas obligé de tout définir : les clés absentes gardent le **thème par défaut** (gris/bleu TUI, tons chauds Rofi).
+Tu n’es pas obligé de tout définir : les clés absentes gardent le **thème par défaut** (neutres zinc + un seul accent bleu pour la TUI, tons chauds Rofi).
 
-## TUI (Textual)
+## TUI (OpenTUI)
+
+Le défaut ne compte qu’**une seule teinte** (le bleu de `primary` / `accent` / `accent_alt`) :
+le vert, le rouge et l’ambre ne servent qu’aux **états** (installé, erreur, simulation).
 
 | Clé | Rôle |
 |-----|------|
 | `background` | Fond principal de l’écran |
-| `surface` | Barre du haut, recherche, panneaux |
-| `surface_elevated` | Modales de confirmation, aide |
+| `surface` | Barre du haut, champ de recherche, pied de page |
+| `surface_elevated` | Modales de confirmation, aide, toasts |
 | `text` | Texte courant |
-| `text_muted` | Chemins, bordures, pied de page |
-| `primary` | Titre « nixpick », nom du paquet, focus recherche |
-| `accent` | Raccourcis, ligne surlignée dans la liste |
-| `accent_alt` | Bordure de l’aide (`?`) |
-| `warning` | Badges simulation / alertes |
-| `success` | Indices « ajouter », touches de confirmation |
-| `danger` | Retrait, bordure modale de suppression |
-| `detail_title` | Titre du panneau « détail » |
+| `text_muted` | Titres de panneau, compteurs, versions, labels du pied de page |
+| `primary` | Accent unique : marque « nixpick », prompt, champ focalisé, ligne sélectionnée, nom du paquet |
+| `accent` | Raccourcis (pied de page, colonne de l’aide) |
+| `accent_alt` | Flags de la barre (ex. `transp.`), bordure de l’aide |
+| `warning` | Simulation, chargement de l’index |
+| `success` | Point `●` installé, indice « ajouter », confirmation |
+| `danger` | Retrait, erreur, bordure modale de suppression |
+| `detail_title` | Bordure et titre du panneau « détail » (gris, comme le titre de liste) |
 | `list_highlight_bg` | Fond de la ligne sélectionnée |
 
 Relance `nixpick` après modification du TOML (le thème est chargé au démarrage).
@@ -72,9 +75,14 @@ Ces fichiers sont recréés à chaque lancement de `nixpick --rofi` (ou quand ni
 
 Ordre de recherche du thème Rofi :
 
-1. Fichiers générés dans `~/.config/nixpick/rofi/`
-2. `~/.config/rofi/nixpick*.rasi` (si tu préfères un thème 100 % manuel, place-les ici et évite de dupliquer dans `nixpick/rofi/`)
+1. Fichiers générés dans `~/.config/nixpick/rofi/` — **recréés à chaque lancement**, ils gagnent donc toujours
+2. `~/.config/rofi/nixpick*.rasi` — secours, utilisé seulement si la génération échoue
 3. Fichiers embarqués dans le dépôt (`assets/rofi/`)
+
+> Un `.rasi` posé à la main dans `~/.config/rofi/` est donc **ignoré** tant que
+> nixpick génère les siens. Pour un thème vraiment personnalisé, lance rofi
+> toi-même : `rofi -dmenu -theme ~/mon-theme.rasi -p "…"`.
+> Pour changer uniquement les couleurs, `[colors.rofi]` suffit.
 
 ### Police Rofi
 
@@ -88,4 +96,4 @@ Si ta barre utilise déjà une palette (ex. tons chauds `#271d1b`), recopie les 
 
 - **Couleur refusée au démarrage** : vérifie le format `#` + 3 ou 6 chiffres hex.
 - **Rofi inchangé** : supprime `~/.config/nixpick/rofi/*.rasi` et relance `nixpick --rofi` pour forcer la régénération.
-- **Thème Rofi custom** : installe uniquement sous `~/.config/rofi/` et retire les fichiers générés dans `nixpick/rofi/` si tu veux qu’ils ne soient plus prioritaires.
+- **Thème Rofi custom** : les fichiers de `~/.config/nixpick/rofi/` sont réécrits à chaque lancement ; un fichier copié dans `~/.config/rofi/` ne servira que si la génération échoue. Pour un rasi entièrement différent, appelle `rofi -theme` directement.

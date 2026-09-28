@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+
 import pytest
 
 from fix_git_runner import run_fix_git
-from tests.conftest import git
 
 
 def test_fix_git_dry_run(flake_repo: Path) -> None:
@@ -52,3 +52,16 @@ def test_fix_git_no_git_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 
     reset_settings_cache()
     assert run_fix_git(yes=True) == 1
+
+
+def test_fix_git_yes_affiche_linventaire(
+    flake_repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Même avec -y, on montre ce qui va être ajouté au dépôt."""
+    path = flake_repo / "extra" / "new.nix"
+    path.parent.mkdir(parents=True)
+    path.write_text("", encoding="utf-8")
+    assert run_fix_git(yes=True) == 0
+    out = capsys.readouterr().out
+    assert "extra/new.nix" in out
+    assert "non suivi" in out

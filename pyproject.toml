@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nixpick"
-version = "0.3.5.1"
+version = "0.3.6"
 description = "Recherche nixpkgs et édition déclarative de environment.systemPackages (NixOS)"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [{ name = "Pikeo" }]
 keywords = ["nixos", "nixpkgs", "tui", "rofi"]
 classifiers = [
@@ -18,12 +18,12 @@ classifiers = [
   "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-  "textual>=8.0",
-  "rich>=13.0",
+  "opentui>=0.1.2",
+  "yoga-python>=0.1.4",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.16"]
 
 [project.urls]
 Homepage = "https://github.com/star67ranger-droid/nixpick"
@@ -47,7 +47,7 @@ py-modules = [
   "fix_git_runner",
   "flake_lock",
   "rofi_theme",
-  "tui_css",
+  "native_env",
   "theme",
 ]
 
@@ -61,3 +61,29 @@ py-modules = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+# Baseline lint (TST-02) : sélection explicite, pas de familles larges
+# (évite les faux positifs S607 « git »/« notify-send » non absolus, E501, …).
+# E402 protège l'ordre d'imports de tui.py : native_env.ensure_opentui_libs()
+# DOIT précéder `import opentui` (libstdc++ NixOS) — les `# noqa: E402` sont
+# voulus et RUF100 les contrôle.
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "E4", "E7", "E9", # pycodestyle critique
+  "E402", # import hors tête de module
+  "F", # pyflakes (inclut F401, F841)
+  "I001", # tri des imports
+  "UP035", "UP017", # pyupgrade : collections.abc, datetime.UTC (3.12+)
+  "FURB162", # fromisoformat() gère « Z » depuis 3.11
+  "DTZ005", # datetime.now() sans tz
+  "RUF059", "RUF100", # déballage inutile / noqa inutile
+  "ISC004", # concaténation implicite dans les collections
+  "SIM102", # if imbriqués fusionnables
+  "PLR1730", # min()/max() au lieu de if
+  "PLW1510", # subprocess sans check= explicite
+  "S110", # try/except/pass
+  "BLE001", # except aveugle
+]

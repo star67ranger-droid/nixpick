@@ -8,7 +8,8 @@ from unittest import mock
 import pytest
 
 from config import reset_settings_cache
-from rebuild_runner import rebuild_command_argv, run_rebuild
+from engine import rebuild_command
+from rebuild_runner import run_rebuild
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +20,7 @@ def _env_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_rebuild_command_argv() -> None:
-    assert rebuild_command_argv() == ["echo", "nixos-rebuild-test"]
+    assert list(rebuild_command()) == ["echo", "nixos-rebuild-test"]
 
 
 def test_run_rebuild_dry_run(capsys: pytest.CaptureFixture[str]) -> None:
@@ -38,8 +39,19 @@ def test_run_rebuild_runs_with_yes(monkeypatch: pytest.MonkeyPatch) -> None:
     with mock.patch("subprocess.run") as run:
         run.return_value = mock.Mock(returncode=0)
         assert run_rebuild(yes=True) == 0
-        run.assert_called_once()
-        assert run.call_args[0][0] == "echo nixos-rebuild-test"
+        run.assert_called_once_with(["echo", "nixos-rebuild-test"], check=False)
+
+
+def test_rebuild_command_does_not_interpret_shell_syntax(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NIXPICK_REBUILD_COMMAND", "echo safe; touch /tmp/nixpick-pwned")
+    reset_settings_cache()
+    monkeypatch.setattr("flake_git.rebuild_preflight_message", lambda: None)
+    with mock.patch("subprocess.run") as run:
+        run.return_value = mock.Mock(returncode=0)
+        assert run_rebuild(yes=True) == 0
+        assert run.call_args.args[0] == ["echo", "safe;", "touch", "/tmp/nixpick-pwned"]
 
 
 def test_run_rebuild_blocked_by_preflight(monkeypatch: pytest.MonkeyPatch) -> None:

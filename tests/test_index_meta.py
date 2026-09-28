@@ -11,7 +11,7 @@ import pytest
 
 import engine
 from config import reset_settings_cache
-from engine import INDEX_META_FILE, build_index, index_age_days
+from engine import build_index, index_age_days
 
 SAMPLE_NIX = """{ config, pkgs, ... }:
 {

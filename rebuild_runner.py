@@ -25,13 +25,14 @@ def run_rebuild(
     dry_run: bool = False,
 ) -> int:
     """Exécute rebuild_command. Retourne le code de sortie du sous-processus."""
-    cmd = rebuild_command().strip()
-    if not cmd:
+    argv = list(rebuild_command())
+    if not argv:
         print("rebuild_command vide — configure config.toml ou NIXPICK_REBUILD_COMMAND.", file=sys.stderr)
         return 1
+    display_cmd = shlex.join(argv)
 
     if dry_run:
-        print(f"[dry-run] {cmd}")
+        print(f"[dry-run] {display_cmd}")
         return 0
 
     from flake_git import rebuild_preflight_message
@@ -45,13 +46,13 @@ def run_rebuild(
         if not sys.stdin.isatty():
             print(
                 "Rebuild non lancé : pas de terminal interactif.\n"
-                f"  {cmd}\n"
+                f"  {display_cmd}\n"
                 "Utilise : nixpick rebuild --yes",
                 file=sys.stderr,
             )
             return 1
         try:
-            answer = input(f"Lancer le rebuild ?\n  {cmd}\n[o/N] ").strip().lower()
+            answer = input(f"Lancer le rebuild ?\n  {display_cmd}\n[o/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
             return 1
@@ -62,8 +63,8 @@ def run_rebuild(
         term = os.environ.get("NIXPICK_REBUILD_TERMINAL", "").strip() or _default_terminal()
         if term:
             inner = (
-                f"{shlex.quote(cmd)}; echo; "
-                "read -r -p 'Terminé — Entrée pour fermer…' _"
+                f"{shlex.join(argv)}; status=$?; echo; "
+                "read -r -p 'Terminé — Entrée pour fermer…' _; exit $status"
             )
             proc = subprocess.run([term, "-e", "bash", "-lc", inner], check=False)
             return int(proc.returncode or 0)
@@ -71,10 +72,10 @@ def run_rebuild(
             "Rebuild terminal : aucun émulateur trouvé (kitty, foot, alacritty, wezterm).",
             file=sys.stderr,
         )
-        print(f"Lance manuellement : {cmd}", file=sys.stderr)
+        print(f"Lance manuellement : {display_cmd}", file=sys.stderr)
         return 1
 
-    proc = subprocess.run(cmd, shell=True, check=False)
+    proc = subprocess.run(argv, check=False)
     code = int(proc.returncode or 0)
     if code != 0:
         _print_rebuild_hints()
@@ -83,7 +84,11 @@ def run_rebuild(
 
 def _print_rebuild_hints() -> None:
     from flake_git import check_flake_untracked
-    from flake_lock import check_nixpick_flake_lock, flake_lock_update_hint, nixos_flake_root
+    from flake_lock import (
+        check_nixpick_flake_lock,
+        flake_lock_update_hint,
+        nixos_flake_root,
+    )
 
     print("\n— Aide nixpick (relis l’erreur Nix ci-dessus) —", file=sys.stderr)
     ok_git, git_detail = check_flake_untracked()
@@ -116,7 +121,3 @@ def _print_rebuild_hints() -> None:
                 file=sys.stderr,
             )
 
-
-def rebuild_command_argv() -> list[str]:
-    """Découpe rebuild_command pour affichage sûr (tests / doc)."""
-    return shlex.split(rebuild_command())

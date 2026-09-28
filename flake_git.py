@@ -10,6 +10,9 @@ from flake_lock import nixos_flake_root
 
 _MAX_LISTED = 24
 _GIT_ADD_BATCH = 200
+# Sauvegardes nixpick avant édition de packages.nix — ne pas git add.
+# .nixpick.lock : verrou d'édition transitoire (artefact, jamais à typer).
+_IGNORE_UNTRACKED_SUFFIXES = (".bak.", ".nixpick.lock")
 
 
 def git_top_for_flake(flake_root: Path) -> Path | None:
@@ -57,7 +60,7 @@ def list_untracked_paths(flake_root: Path) -> tuple[list[str], str | None]:
         return [], None
     try:
         proc = subprocess.run(
-            ["git", "-C", str(git_top), "status", "--porcelain", "-u"],
+            ["git", "-C", str(git_top), "status", "--porcelain", "-z", "-u"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -73,15 +76,26 @@ def list_untracked_paths(flake_root: Path) -> tuple[list[str], str | None]:
     if prefix is None:
         return [], None
 
+    # -z : chemins bruts (pas de guillemets C) et entrées séparées par NUL ;
+    # un rename/copy porte son ancien chemin dans le token suivant.
     paths: list[str] = []
-    for line in proc.stdout.splitlines():
-        if len(line) < 4 or not line.startswith("??"):
+    tokens = proc.stdout.split("\0")
+    index = 0
+    while index < len(tokens):
+        entry = tokens[index]
+        index += 1
+        if len(entry) < 4:
             continue
-        rel = line[3:].strip()
-        if " -> " in rel:
-            rel = rel.split(" -> ", 1)[1].strip()
-        if rel and _path_under_flake_prefix(rel, prefix):
-            paths.append(rel)
+        status, rel = entry[:2], entry[3:]
+        if "R" in status or "C" in status:
+            index += 1
+        if status != "??":
+            continue
+        if not rel or not _path_under_flake_prefix(rel, prefix):
+            continue
+        if any(s in rel.replace("\\", "/") for s in _IGNORE_UNTRACKED_SUFFIXES):
+            continue
+        paths.append(rel)
     return sorted(paths), None
 
 

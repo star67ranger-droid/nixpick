@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from engine import AddFailure, RemoveFailure, rebuild_command
+from config import format_rebuild_command
+from engine import AddFailure, RemoveFailure
 
 ROFI_CONFIRM_ADD = "Confirmer l'ajout"
 ROFI_CONFIRM_REMOVE = "Confirmer le retrait"
@@ -23,7 +24,7 @@ def cli_success_lines(backup_path: Path) -> list[str]:
         f"Sauvegarde : {backup_path}",
         "",
         "Pour appliquer : nixpick rebuild",
-        f"  ({rebuild_command()})",
+        f"  ({format_rebuild_command()})",
     ]
 
 
@@ -72,8 +73,10 @@ def notify_add_failure(plan: AddFailure) -> tuple[str, str]:
 def notify_permission_denied(packages_file: Path) -> tuple[str, str]:
     return (
         "nixpick",
-        f"Pas les droits d'écriture sur {packages_file}.\n"
-        "Vérifie les permissions ou adapte NIXPICK_PACKAGES_FILE.",
+        (
+            f"Pas les droits d'écriture sur {packages_file}.\n"
+            "Vérifie les permissions ou adapte NIXPICK_PACKAGES_FILE."
+        ),
     )
 
 
@@ -101,7 +104,7 @@ def _success_body(backup_path: Path) -> str:
     return (
         f"Sauvegarde : {backup_path}\n"
         "Applique avec : nixpick rebuild\n"
-        f"({rebuild_command()})"
+        f"({format_rebuild_command()})"
     )
 
 

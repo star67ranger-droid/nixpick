@@ -3,26 +3,28 @@
 
 packages_file = "/etc/nixos/modules/packages.nix"
 packages_anchor = "environment.systemPackages"
-rebuild_command = "sudo nixos-rebuild switch --flake /etc/nixos#nixos"
+# Tableau d'arguments : aucune interprétation shell n'est effectuée.
+rebuild_command = ["sudo", "nixos-rebuild", "switch", "--flake", "/etc/nixos#nixos"]
 
 # TUI : fond transparent (terminal ANSI, ex. Kitty background_opacity)
 transparent_background = false
 
-# ── Thème TUI (Textual) ─────────────────────────────────────────────────────
+# ── Thème TUI (OpenTUI) ─────────────────────────────────────────────────────
+# Neutres zinc + UN seul accent (bleu) ; vert / rouge / ambre = états seuls.
 [colors]
-background = "#2c2d31"
-surface = "#232326"
-surface_elevated = "#35363b"
-text = "#a7aab0"
-text_muted = "#737994"
-primary = "#57a5e5"
-accent = "#51a8b3"
-accent_alt = "#bb70d2"
-warning = "#e5c07b"
-success = "#8fb573"
-danger = "#e06c75"
-detail_title = "#dbb671"
-list_highlight_bg = "#2c2d31"
+background = "#17181c"
+surface = "#101114"
+surface_elevated = "#212328"
+text = "#c8ccd2"
+text_muted = "#838a94"
+primary = "#7ba4e0"
+accent = "#8ab7ea"
+accent_alt = "#6f9ad6"
+warning = "#d6b072"
+success = "#8cb37f"
+danger = "#d9757e"
+detail_title = "#838a94"
+list_highlight_bg = "#21242a"
 
 # ── Thème Rofi (nixpick --rofi) ─────────────────────────────────────────────
 [colors.rofi]

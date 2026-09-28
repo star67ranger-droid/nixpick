@@ -22,7 +22,7 @@ fi
 
 echo "→ dépendances"
 "$VENV/bin/pip" install -q -U pip
-"$VENV/bin/pip" install -q -r "$ROOT/requirements.txt"
+"$VENV/bin/pip" install -q -e "$ROOT"
 
 mkdir -p "$BIN_DIR"
 ln -sf "$ROOT/bin/nixpick" "$BIN_DIR/nixpick"

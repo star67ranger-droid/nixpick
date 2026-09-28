@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
 from engine import packages_file
+
+# Contenu volatile : modifié par git/pytest sans changement de sources.
+_VOLATILE_TOP = {
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".cache",
+}
+# Trop volumineux pour un balayage (leur mtime n'est pas un signal utile).
+_HEAVY_TOP = {".venv", "venv", "build", "dist", "result"}
 
 
 def nixos_flake_root() -> Path | None:
@@ -59,6 +72,39 @@ def _path_nar_hash(path: Path) -> str | None:
     return None
 
 
+def _tree_changes_since(root: Path, since: float) -> tuple[bool, bool]:
+    """`(sources_modifiées, volatils_modifiés)` : fichiers plus récents que `since`.
+
+    Permet d'expliquer une divergence de hash : `.git` (commits) et les caches
+    entrent dans le hash de chemin mais ne changent pas les sources verrouillées.
+    """
+    sources = False
+    volatile = False
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in _HEAVY_TOP and not name.endswith(".egg-info")
+        ]
+        rel_parts = Path(dirpath).relative_to(root).parts
+        top = rel_parts[0] if rel_parts else ""
+        is_volatile = top in _VOLATILE_TOP
+        for name in filenames:
+            path = Path(dirpath) / name
+            if path.is_symlink():
+                continue
+            try:
+                if path.stat().st_mtime <= since:
+                    continue
+            except OSError:
+                continue
+            if is_volatile:
+                volatile = True
+            else:
+                sources = True
+    return sources, volatile
+
+
 def flake_lock_update_hint(flake_root: Path, input_name: str = "nixpick") -> str:
     return f"cd {flake_root} && nix flake lock --update-input {input_name}"
 
@@ -86,8 +132,10 @@ def check_nixpick_flake_lock() -> tuple[bool, str]:
     if not nixpick_path.is_dir():
         return (
             False,
-            f"Input nixpick pointe vers {nixpick_path} (absent). "
-            f"Corrige flake.nix ou le chemin.",
+            (
+                f"Input nixpick pointe vers {nixpick_path} (absent). "
+                f"Corrige flake.nix ou le chemin."
+            ),
         )
 
     current = _path_nar_hash(nixpick_path)
@@ -97,15 +145,35 @@ def check_nixpick_flake_lock() -> tuple[bool, str]:
     if current == locked_hash:
         return (
             True,
-            f"flake.lock cohérent avec {nixpick_path.name} ({current[:20]}…).",
+            (
+                f"flake.lock cohérent avec {nixpick_path.name} ({current[:20]}…)."
+            ),
         )
 
     hint = flake_lock_update_hint(root)
+    try:
+        lock_mtime = lock_path.stat().st_mtime
+    except OSError:
+        lock_mtime = 0.0
+    sources_changed, volatile_changed = _tree_changes_since(nixpick_path, lock_mtime)
+    if not sources_changed and volatile_changed:
+        return (
+            True,
+            (
+                "flake.lock diverge de l'arbre nixpick, mais seuls des fichiers "
+                "volatils (.git, caches) ont bougé depuis le lock — sources "
+                "inchangées, aucune action nécessaire.\n"
+                f"      lock : {locked_hash}\n"
+                f"      actuel : {current}"
+            ),
+        )
     return (
         False,
-        "flake.lock périmé pour l'input nixpick — le rebuild échouera "
-        f"(NAR hash mismatch).\n"
-        f"      lock : {locked_hash}\n"
-        f"      actuel : {current}\n"
-        f"      → {hint}",
+        (
+            "flake.lock périmé pour l'input nixpick : hash de chemin divergent "
+            "depuis le dernier lock.\n"
+            f"      lock : {locked_hash}\n"
+            f"      actuel : {current}\n"
+            f"      → {hint}"
+        ),
     )

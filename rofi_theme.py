@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from config import CONFIG_DIR, asset_path
+from config import CONFIG_DIR, _atomic_write_config
 from theme import ColorPalette, RofiColors, get_color_palette
 
 _ROFI_TEMPLATE = """/* Généré par nixpick — ne pas éditer (voir docs/THEMES.md) */
@@ -49,6 +49,7 @@ prompt {{
 entry {{
   placeholder: "Filtrer…";
   text-color: {entry_text};
+  placeholder-color: {comment};
 }}
 
 listview {{
@@ -93,7 +94,11 @@ def rofi_generated_dir() -> Path:
 
 
 def sync_rofi_themes(palette: ColorPalette | None = None) -> list[Path]:
-    """Écrit nixpick.rasi et nixpick-query.rasi dans ~/.config/nixpick/rofi/."""
+    """Écrit nixpick.rasi et nixpick-query.rasi dans ~/.config/nixpick/rofi/.
+
+    N'écrit que si le contenu diffère, de façon atomique : rofi ne doit pas
+    lire un .rasi tronqué (mtime inchangée sinon, pas d'écran vide).
+    """
     pal = palette or get_color_palette()
     out_dir = rofi_generated_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -101,15 +106,15 @@ def sync_rofi_themes(palette: ColorPalette | None = None) -> list[Path]:
         out_dir / "nixpick.rasi",
         out_dir / "nixpick-query.rasi",
     ]
-    paths[0].write_text(_format_rofi(_ROFI_TEMPLATE, pal.rofi), encoding="utf-8")
-    paths[1].write_text(
-        _format_rofi(_ROFI_QUERY_TEMPLATE, pal.rofi), encoding="utf-8"
-    )
-    return paths
-
-
-def bundled_rofi_paths() -> list[Path]:
-    return [
-        asset_path("rofi", "nixpick.rasi"),
-        asset_path("rofi", "nixpick-query.rasi"),
+    contents = [
+        _format_rofi(_ROFI_TEMPLATE, pal.rofi),
+        _format_rofi(_ROFI_QUERY_TEMPLATE, pal.rofi),
     ]
+    for path, content in zip(paths, contents):
+        try:
+            if path.read_text(encoding="utf-8") == content:
+                continue
+        except OSError:
+            pass
+        _atomic_write_config(path, content)
+    return paths

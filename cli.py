@@ -8,6 +8,7 @@ from engine import (
     DEFAULT_RESULT_LIMIT,
     AddFailure,
     NixCommandError,
+    NixSyntaxError,
     RemoveFailure,
     commit_add,
     commit_remove,
@@ -65,6 +66,9 @@ def run_cli_remove(term: str, dry_run: bool) -> int:
         say(f"{RED}Pas les droits d'écriture sur {plan.packages_file}.{RESET}")
         return 1
     except LookupError as err:
+        say(f"{RED}{err}{RESET}")
+        return 1
+    except NixSyntaxError as err:
         say(f"{RED}{err}{RESET}")
         return 1
 
@@ -128,7 +132,8 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
     plan = plan_add(attr, descriptions.get(attr, ""))
     if isinstance(plan, AddFailure):
         say(f"{YELLOW}{plan.message}{RESET}")
-        return 0
+        # ALREADY_LISTED est idempotent (comme NOT_LISTED côté retrait).
+        return 0 if plan.outcome.name == "ALREADY_LISTED" else 1
 
     say()
     say(f"{BOLD}Modification prévue dans {plan.packages_file} :{RESET}")
@@ -153,6 +158,12 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
         commit_add(plan, dry_run=False)
     except PermissionError:
         say(f"{RED}Pas les droits d'écriture sur {plan.packages_file}.{RESET}")
+        return 1
+    except LookupError as err:
+        say(f"{YELLOW}{err}{RESET}")
+        return 1
+    except NixSyntaxError as err:
+        say(f"{RED}{err}{RESET}")
         return 1
 
     say(f"{GREEN}Ajouté.{RESET}")

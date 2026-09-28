@@ -12,6 +12,7 @@ from engine import (
     DEFAULT_RESULT_LIMIT,
     AddFailure,
     NixCommandError,
+    NixSyntaxError,
     RemoveFailure,
     commit_add,
     commit_remove,
@@ -123,8 +124,8 @@ def _rofi_preview(message: str) -> None:
 
 
 def _offer_rebuild() -> None:
-    from flake_git import check_flake_untracked, rebuild_preflight_notify_body
     from fix_git_runner import run_fix_git
+    from flake_git import check_flake_untracked, rebuild_preflight_notify_body
 
     def _exec_rebuild() -> None:
         code = run_rebuild(yes=True, in_terminal=True)
@@ -192,7 +193,7 @@ def _notify(title: str, body: str) -> None:
                 timeout=5,
             )
             return
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 — notifier ne doit jamais échouer (repli stderr)
             pass
     print(f"{title}\n{body}", file=sys.stderr)
 
@@ -219,7 +220,20 @@ def _confirm_plan(
 def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
     from rofi_theme import sync_rofi_themes
 
-    sync_rofi_themes()
+    if not shutil.which("rofi"):
+        print(
+            "nixpick : rofi introuvable — installe-le (pkgs.rofi) ou utilise "
+            "la TUI (nixpick) ou le CLI (nixpick <terme>).",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        sync_rofi_themes()
+    except ValueError as err:
+        # UX-03 : couleur/config invalide → notification lisible, pas de traceback.
+        _notify("nixpick — thème", str(err))
+        return 1
     term = _rofi("󰏖 nixpick", query_only=True)
     if not term:
         return 0
@@ -243,7 +257,6 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
         return 1
 
     installed = list_installed_attrs()
-    descriptions = fetch_descriptions([a for a, _ in results])
 
     labels: list[str] = []
     by_label: dict[str, str] = {}
@@ -265,7 +278,7 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
         if isinstance(plan_rm, RemoveFailure):
             t, b = notify_remove_failure(plan_rm)
             _notify(t, b)
-            return 0
+            return 0 if plan_rm.outcome.name == "NOT_LISTED" else 1
         if not _confirm_plan(
             attr,
             plan_rm.context_lines,
@@ -283,16 +296,24 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
             t, b = notify_permission_denied(plan_rm.packages_file)
             _notify(t, b)
             return 1
+        except LookupError as err:
+            _notify("nixpick — retrait", str(err))
+            return 1
+        except NixSyntaxError as err:
+            _notify("nixpick — retrait", str(err))
+            return 1
         t, b = notify_success_remove(attr, plan_rm.backup_path)
         _notify(t, b)
         _offer_rebuild()
         return 0
 
-    plan = plan_add(attr, descriptions.get(attr, ""))
+    # Une seule description, et seulement après le choix : charger celles de
+    # tous les résultats gelait le lanceur le temps d'un `nix eval`.
+    plan = plan_add(attr, fetch_descriptions([attr]).get(attr, ""))
     if isinstance(plan, AddFailure):
         t, b = notify_add_failure(plan)
         _notify(t, b)
-        return 0
+        return 0 if plan.outcome.name == "ALREADY_LISTED" else 1
 
     if not _confirm_plan(
         attr,
@@ -312,6 +333,12 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
     except PermissionError:
         t, b = notify_permission_denied(plan.packages_file)
         _notify(t, b)
+        return 1
+    except LookupError as err:
+        _notify("nixpick — ajout", str(err))
+        return 1
+    except NixSyntaxError as err:
+        _notify("nixpick — ajout", str(err))
         return 1
 
     t, b = notify_success_add(attr, plan.backup_path)

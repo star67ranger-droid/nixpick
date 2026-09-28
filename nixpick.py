@@ -46,7 +46,7 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command")
     doctor_parser = subparsers.add_parser(
         "doctor",
-        help="vérifie config, cache, outils (sans lancer Nix)",
+        help="vérifie config, cache, outils, Git flake et flake.lock (nix/git en lecture)",
     )
     doctor_parser.add_argument(
         "--json",
@@ -160,6 +160,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # SEC-01 : une config illisible/invalid ne doit pas être remplacée en
+    # silence par les défauts (redirection d'écritures) : on refuse de démarrer.
+    try:
+        get_settings()
+    except ValueError as err:
+        print(f"nixpick : {err}", file=sys.stderr)
+        return 1
+
     if args.command == "doctor":
         return run_doctor(as_json=args.json)
 
@@ -217,6 +225,14 @@ def main() -> int:
 
     if args.rofi:
         return run_rofi(refresh=args.refresh, dry_run=args.dry_run)
+
+    if args.remove and not args.term:
+        print(
+            "nixpick : --remove exige un terme "
+            "(ex. nixpick --remove firefox).",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.term and not args.tui:
         if args.remove:

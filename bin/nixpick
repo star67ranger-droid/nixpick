@@ -9,7 +9,7 @@ VENV_PY="$ROOT/.venv/bin/python"
 if [[ ! -x "$VENV_PY" ]]; then
   echo "nixpick: environnement Python absent." >&2
   echo "  cd $ROOT" >&2
-  echo "  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
+  echo "  python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'" >&2
   exit 1
 fi
 

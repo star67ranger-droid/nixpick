@@ -68,3 +68,56 @@ def test_check_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     ok, detail = check_nixpick_flake_lock()
     assert ok is False
     assert "flake lock" in detail.lower() or "périmé" in detail.lower()
+
+
+def test_check_volatile_change_is_not_an_alarm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """UX-04 : un commit (.git) ne doit pas déclencher l'alarme flake.lock."""
+    import os
+
+    flake = tmp_path / "flake"
+    flake.mkdir()
+    (flake / "flake.nix").write_text("{ }\n", encoding="utf-8")
+    nixpick = tmp_path / "nixpick"
+    nixpick.mkdir()
+    (nixpick / "flake.nix").write_text("{ }\n", encoding="utf-8")
+    lock = {
+        "nodes": {
+            "nixpick": {
+                "locked": {
+                    "type": "path",
+                    "path": str(nixpick),
+                    "narHash": "sha256-deadbeef",
+                }
+            }
+        }
+    }
+    lock_path = flake / "flake.lock"
+    lock_path.write_text(json.dumps(lock), encoding="utf-8")
+    pkg = flake / "modules" / "packages.nix"
+    pkg.parent.mkdir()
+    pkg.write_text("{ }\n", encoding="utf-8")
+    monkeypatch.setenv("NIXPICK_PACKAGES_FILE", str(pkg))
+    reset_settings_cache()
+    monkeypatch.setattr("flake_lock._path_nar_hash", lambda p: "sha256-current")
+
+    # Un commit : seul le contenu de .git est plus récent que le lock.
+    git_dir = nixpick / ".git"
+    git_dir.mkdir()
+    head = git_dir / "HEAD"
+    head.write_text("ref: refs/heads/main\n", encoding="utf-8")
+    newer = lock_path.stat().st_mtime + 10
+    os.utime(head, (newer, newer))
+
+    ok, detail = check_nixpick_flake_lock()
+    assert ok is True
+    assert "volatil" in detail.lower()
+
+    # Par contre, une source modifiée après le lock doit alerter.
+    source = nixpick / "engine.py"
+    source.write_text("# changed\n", encoding="utf-8")
+    os.utime(source, (newer + 10, newer + 10))
+    ok, detail = check_nixpick_flake_lock()
+    assert ok is False
+    assert "périmé" in detail.lower()

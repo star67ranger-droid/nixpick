@@ -25,7 +25,7 @@ ROOT_MODULES = [
     "fix_git_runner",
     "flake_lock",
     "rofi_theme",
-    "tui_css",
+    "native_env",
     "theme",
 ]
 

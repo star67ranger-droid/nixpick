@@ -19,6 +19,7 @@ from engine import (
     list_installed_attrs,
     packages_anchor,
     packages_file,
+    packages_lock_path,
     rebuild_command,
 )
 from flake_git import check_flake_untracked
@@ -30,11 +31,6 @@ class Check:
     label: str
     ok: bool
     detail: str
-
-
-def packages_lock_path() -> Path:
-    path = packages_file()
-    return path.parent / f".{path.name}.nixpick.lock"
 
 
 def _check_packages_file() -> Check:
@@ -111,10 +107,17 @@ def _check_lock() -> Check:
 def _check_nix_env() -> Check:
     if shutil.which("nix-env"):
         return Check("nix-env", True, "nix-env trouvé dans le PATH.")
+    if shutil.which("nix"):
+        return Check(
+            "nix-env",
+            False,
+            "nix-env absent — requis pour l'index (nix-env -qaP). "
+            "Installe le profil Nix classique ou active nix-command + nix-env.",
+        )
     return Check(
         "nix-env",
         False,
-        "nix-env absent du PATH — requis pour construire l'index.",
+        "Nix absent du PATH — requis pour l'index et les descriptions.",
     )
 
 
@@ -129,8 +132,11 @@ def _check_rofi() -> Check:
 
 
 def _check_rebuild() -> Check:
-    cmd = rebuild_command().strip()
-    if not cmd:
+    from config import format_rebuild_command
+
+    argv = rebuild_command()
+    cmd = format_rebuild_command()
+    if not argv:
         return Check(
             "Commande rebuild",
             False,
@@ -222,6 +228,7 @@ def _git_log_line(packages_path: Path, line_no: int) -> str | None:
             capture_output=True,
             text=True,
             timeout=15,
+            check=False,  # le returncode est inspecté juste après
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -242,7 +249,7 @@ def run_why(attr: str, *, out: object | None = None) -> int:
         print(f"Fichier configuré introuvable : {path}", file=sys.stderr)
         return 1
 
-    lines = path.read_text().splitlines()
+    lines = path.read_text(encoding="utf-8").splitlines()
     anchor = packages_anchor()
     line_idx = find_package_line_index(lines, attr)
 

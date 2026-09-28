@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
-from config import CONFIG_FILE, _load_toml
+from config import _load_toml
 
 _HEX_RE = re.compile(r"^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$")
 
@@ -23,23 +23,21 @@ def _norm_hex(value: str, field: str) -> str:
 
 @dataclass(frozen=True)
 class TuiColors:
-    background: str = "#2c2d31"
-    surface: str = "#232326"
-    surface_elevated: str = "#35363b"
-    text: str = "#a7aab0"
-    text_muted: str = "#737994"
-    primary: str = "#57a5e5"
-    accent: str = "#51a8b3"
-    accent_alt: str = "#bb70d2"
-    warning: str = "#e5c07b"
-    success: str = "#8fb573"
-    danger: str = "#e06c75"
-    detail_title: str = "#dbb671"
-    list_highlight_bg: str = "#2c2d31"
-
-    def rich(self, key: str) -> str:
-        """Couleur sans # pour le markup Rich/Textual ([b #hex])."""
-        return getattr(self, key).lstrip("#")
+    # Neutres zinc froids + UN seul accent (bleu désaturé) ; le vert / rouge /
+    # ambre restent réservés aux états (installé, erreur, simulation).
+    background: str = "#17181c"
+    surface: str = "#101114"
+    surface_elevated: str = "#212328"
+    text: str = "#c8ccd2"
+    text_muted: str = "#838a94"
+    primary: str = "#7ba4e0"
+    accent: str = "#8ab7ea"
+    accent_alt: str = "#6f9ad6"
+    warning: str = "#d6b072"
+    success: str = "#8cb37f"
+    danger: str = "#d9757e"
+    detail_title: str = "#838a94"
+    list_highlight_bg: str = "#21242a"
 
 
 @dataclass(frozen=True)
@@ -99,7 +97,3 @@ def get_color_palette() -> ColorPalette:
 
 def reset_color_palette_cache() -> None:
     get_color_palette.cache_clear()
-
-
-def palette_config_path_hint() -> str:
-    return str(CONFIG_FILE)

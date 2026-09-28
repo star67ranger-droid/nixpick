@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
-from datetime import datetime, timezone
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Iterator
 
 from config import get_settings
 
@@ -28,7 +31,7 @@ def packages_anchor() -> str:
     return get_settings().packages_anchor
 
 
-def rebuild_command() -> str:
+def rebuild_command() -> tuple[str, ...]:
     return get_settings().rebuild_command
 
 CACHE_DIR = Path.home() / ".cache" / "nixpick"
@@ -64,21 +67,38 @@ def run(cmd: list[str], timeout: int) -> str:
         raise NixCommandError((err.stderr or err.stdout or "").strip()[:400])
 
 
+def _atomic_write_json(path: Path, data: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
 def _write_index_meta(built_at: float | None = None) -> None:
     ts = built_at if built_at is not None else time.time()
-    built_at_iso = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
-    INDEX_META_FILE.write_text(json.dumps({"built_at": built_at_iso}))
+    built_at_iso = datetime.fromtimestamp(ts, tz=UTC).isoformat()
+    _atomic_write_json(INDEX_META_FILE, {"built_at": built_at_iso})
 
 
 def index_age_days() -> float | None:
     if INDEX_META_FILE.exists():
         try:
-            meta = json.loads(INDEX_META_FILE.read_text())
+            meta = json.loads(INDEX_META_FILE.read_text(encoding="utf-8"))
             raw = meta.get("built_at")
             if isinstance(raw, str) and raw:
-                built = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                built = datetime.fromisoformat(raw)
                 if built.tzinfo is None:
-                    built = built.replace(tzinfo=timezone.utc)
+                    built = built.replace(tzinfo=UTC)
                 return (time.time() - built.timestamp()) / 86400
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             pass
@@ -87,20 +107,32 @@ def index_age_days() -> float | None:
     return (time.time() - INDEX_FILE.stat().st_mtime) / 86400
 
 
-def build_index(on_status: StatusCallback | None = None) -> dict:
-    if on_status:
-        on_status("Construction de l'index nixpkgs (~20 s)…")
-    raw = run(["nix-env", "-qaP", "--json"], timeout=600)
-    data = json.loads(raw)
-    slim = {
-        key: {"pname": pkg.get("pname", ""), "version": pkg.get("version", "")}
-        for key, pkg in data.items()
-    }
+@contextmanager
+def _index_build_lock() -> Iterator[None]:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    INDEX_FILE.write_text(json.dumps(slim))
-    _write_index_meta()
-    if on_status:
-        on_status(f"{len(slim)} paquets indexés.")
+    lock_path = CACHE_DIR / "index.build.lock"
+    with open(lock_path, "w", encoding="utf-8") as lock_f:
+        fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
+
+
+def build_index(on_status: StatusCallback | None = None) -> dict:
+    with _index_build_lock():
+        if on_status:
+            on_status("Construction de l'index nixpkgs (~20 s)…")
+        raw = run(["nix-env", "-qaP", "--json"], timeout=600)
+        data = json.loads(raw)
+        slim = {
+            key: {"pname": pkg.get("pname", ""), "version": pkg.get("version", "")}
+        for key, pkg in data.items()
+        }
+        _atomic_write_json(INDEX_FILE, slim)
+        _write_index_meta()
+        if on_status:
+            on_status(f"{len(slim)} paquets indexés.")
     return slim
 
 
@@ -113,7 +145,7 @@ def load_index(refresh: bool = False, on_status: StatusCallback | None = None) -
             on_status(f"Index vieux de {age:.0f} jours, reconstruction…")
         return build_index(on_status)
     try:
-        return json.loads(INDEX_FILE.read_text())
+        return json.loads(INDEX_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as err:
         if on_status:
             on_status(f"Index illisible ({err}), reconstruction…")
@@ -185,6 +217,23 @@ def search(
     return search_index(pkg_index, term, limit)
 
 
+@lru_cache(maxsize=64)
+def _subsequence_pattern(needle: str) -> re.Pattern[str]:
+    """Motif « fzf » compilé une fois par requête : le moteur C ne monopolise
+    pas le GIL, contrairement au générateur Python (le scan de repli gelait
+    la TUI ~90 ms par frappe sur un index de 100 000 lignes)."""
+    return re.compile(".*".join(re.escape(ch) for ch in needle))
+
+
+def _is_subsequence(needle: str, hay: str) -> bool:
+    """True si ``needle`` apparaît dans ``hay`` dans l'ordre (fzf, sans exiger
+    la contiguïté) : ``"frx"`` matche ``firefox``."""
+    if not needle:
+        return True
+    # Préfiltre en C : toute sous-séquence contient la première lettre.
+    return needle[0] in hay and _subsequence_pattern(needle).search(hay) is not None
+
+
 def search_index(
     index: PackageIndex, term: str, limit: int = DEFAULT_RESULT_LIMIT
 ) -> list[tuple[str, str]]:
@@ -205,6 +254,9 @@ def search_index(
             return 70
         if needle in row.attr_lc or needle in row.pname_lc:
             return 40
+        if _is_subsequence(needle, row.attr_lc) or _is_subsequence(needle, row.pname_lc):
+            # Dernier rang : ne repousse jamais une correspondance contiguë.
+            return 20
         return None
 
     primary, seen = index.candidates_for(needle)
@@ -226,30 +278,40 @@ def search_index(
 
 
 class DescriptionCache:
-    """Évite de relancer nix eval pour les mêmes attributs."""
+    """Évite de relancer nix eval pour les mêmes attributs.
+
+    Les descriptions arrivent d'un worker TUI concurrent : le verrou protège
+    le dict (``json.dumps`` pendant qu'un autre thread l'insère) et l'écriture
+    du cache.
+    """
 
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         self._data: dict[str, str] = {}
         if DESC_CACHE_FILE.exists():
             try:
-                self._data = json.loads(DESC_CACHE_FILE.read_text())
+                self._data = json.loads(DESC_CACHE_FILE.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 self._data = {}
 
     def get(self, attr: str) -> str | None:
-        text = self._data.get(attr)
+        with self._lock:
+            text = self._data.get(attr)
         return text if text else None
 
     def remember(self, attr: str, description: str) -> None:
-        if not description or self._data.get(attr) == description:
+        if not description:
             return
-        self._data[attr] = description
-        self._persist()
+        with self._lock:
+            if self._data.get(attr) == description:
+                return
+            self._data[attr] = description
+            self._persist()
 
     def _persist(self) -> None:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        # Appelé sous verrou.
         try:
-            DESC_CACHE_FILE.write_text(json.dumps(self._data))
+            _atomic_write_json(DESC_CACHE_FILE, self._data)
         except OSError:
             pass
 
@@ -263,14 +325,15 @@ class DescriptionCache:
         return desc
 
     def remember_many(self, data: dict[str, str]) -> None:
-        changed = False
-        for attr, description in data.items():
-            if not description or self._data.get(attr) == description:
-                continue
-            self._data[attr] = description
-            changed = True
-        if changed:
-            self._persist()
+        with self._lock:
+            changed = False
+            for attr, description in data.items():
+                if not description or self._data.get(attr) == description:
+                    continue
+                self._data[attr] = description
+                changed = True
+            if changed:
+                self._persist()
 
     def fetch_many(self, attrs: list[str]) -> dict[str, str]:
         missing = [a for a in attrs if self.get(a) is None]
@@ -315,29 +378,30 @@ def fetch_descriptions(attrs: list[str]) -> dict[str, str]:
             check=True,
         ).stdout
         return json.loads(raw)
-    except Exception:
+    except json.JSONDecodeError:
+        return {}
+    except subprocess.TimeoutExpired:
+        return {}
+    except subprocess.CalledProcessError:
+        return {}
+    except OSError:
         return {}
 
 
 def list_installed_attrs() -> set[str]:
-    """Paquets déjà listés dans environment.systemPackages."""
+    """Paquets détectés dans le bloc simple environment.systemPackages."""
     path = packages_file()
     if not path.exists():
         return set()
-    lines = path.read_text().splitlines()
-    anchor_re = re.compile(rf"^\s*{re.escape(packages_anchor())}\b")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start, end = _find_package_block(lines)
+    if start is None or end is None:
+        return set()
     found: set[str] = set()
-    in_block = False
-    for line in lines:
-        if anchor_re.match(line):
-            in_block = True
-            continue
-        if in_block:
-            if line.strip() == "];":
-                break
-            m = re.match(r"^\s*([a-zA-Z0-9_.-]+)\s*(#.*)?$", line)
-            if m:
-                found.add(m.group(1))
+    for line in lines[start + 1 : end]:
+        match = re.match(r"^\s*([a-zA-Z0-9_.-]+)\s*(?:#.*)?$", line)
+        if match:
+            found.add(match.group(1))
     return found
 
 
@@ -346,31 +410,89 @@ def _attr_line_pattern(attr: str) -> re.Pattern[str]:
 
 
 def already_listed(lines: list[str], attr: str) -> bool:
-    pattern = _attr_line_pattern(attr)
-    return any(pattern.match(line) for line in lines)
+    return find_package_line_index(lines, attr) is not None
 
 
 def _read_packages_lines() -> list[str] | AddFailure:
     path = packages_file()
     if not path.exists():
         return AddFailure(AddOutcome.FILE_MISSING, f"{path} introuvable.")
-    return path.read_text().splitlines(keepends=True)
+    return path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+
+def _strip_nix_line_comment(line: str) -> str:
+    """Retire les commentaires `#` hors chaînes, sans parser les chaînes Nix."""
+    in_string = False
+    escaped = False
+    for i, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and in_string:
+            escaped = True
+        elif char == '"':
+            in_string = not in_string
+        elif char == "#" and not in_string:
+            return line[:i]
+    return line
+
+
+def _nix_code_only(line: str) -> str:
+    """Commentaires retirés puis contenu des chaînes « … » vidé.
+
+    Compter ``[`` / ``]`` sur la ligne brute comptait aussi les crochets d'une
+    chaîne (``"modules[1]"``) : le bloc était alors déclaré non équilibré et
+    l'ajout refusé à tort.
+    """
+    out: list[str] = []
+    in_string = False
+    escaped = False
+    for char in _strip_nix_line_comment(line):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and in_string:
+            escaped = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            out.append(char)
+    return "".join(out)
+
+
+def _find_package_block(lines: list[str]) -> tuple[int | None, int | None]:
+    """Trouve un bloc simple `anchor = with pkgs; [`; refuse les formes ambiguës."""
+    anchor_re = re.compile(rf"^\s*{re.escape(packages_anchor())}\s*=\s*with\s+pkgs\s*;\s*\[\s*(?:#.*)?$")
+    starts = [i for i, line in enumerate(lines) if anchor_re.match(line)]
+    if len(starts) != 1:
+        return None, None
+    start = starts[0]
+    depth = 1
+    end: int | None = None
+    for i in range(start + 1, len(lines)):
+        stripped = _nix_code_only(lines[i])
+        depth += stripped.count("[") - stripped.count("]")
+        if depth == 0:
+            if stripped.strip() != "];":
+                return None, None
+            end = i
+            break
+        if depth < 0:
+            return None, None
+    return start, end
 
 
 def find_package_line_index(lines: list[str], attr: str) -> int | None:
-    """Index de la ligne du paquet dans environment.systemPackages."""
+    """Index de la ligne du paquet dans un bloc pris en charge."""
     pattern = _attr_line_pattern(attr)
-    anchor_re = re.compile(rf"^\s*{re.escape(packages_anchor())}\b")
-    in_block = False
-    for i, line in enumerate(lines):
-        if anchor_re.match(line):
-            in_block = True
-            continue
-        if in_block:
-            if line.strip() == "];":
-                break
-            if pattern.match(line):
-                return i
+    start, end = _find_package_block(lines)
+    if start is None or end is None:
+        return None
+    for i in range(start + 1, end):
+        if pattern.match(lines[i]):
+            return i
     return None
 
 
@@ -395,17 +517,47 @@ def _validate_attr_name(attr: str) -> str | None:
 
 
 def _backup_path() -> Path:
-    from datetime import datetime
-
     base = packages_file()
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Horodatage local, simple étiquette de fichier (jamais comparé entre fuseaux).
+    ts = time.strftime("%Y%m%d-%H%M%S")
     return base.with_name(f"{base.name}.bak.{ts}")
+
+
+def _edit_lock_dir() -> Path:
+    """Répertoire des verrous d'édition : cache utilisateur, sinon ``/tmp``.
+
+    ``~/.cache`` peut être indisponible (HOME en lecture seule, bac à sable) :
+    on retombe sur un répertoire temporaire plutôt que de rendre toute édition
+    impossible.
+    """
+    candidates = [CACHE_DIR]
+    try:
+        candidates.append(Path(tempfile.gettempdir()) / f"nixpick-{os.getuid()}")
+    except (AttributeError, OSError):  # pragma: no cover — plateforme sans uid
+        candidates.append(Path(tempfile.gettempdir()) / "nixpick")
+    for base in candidates:
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            continue
+        return base
+    return candidates[-1]
+
+
+def packages_lock_path() -> Path:
+    """Verrou d'édition de ``packages_file`` — source unique de vérité.
+
+    Il vit hors du dépôt flake : posé à côté de ``packages.nix``, il laissait
+    un fichier orphelin au cœur du dépôt, jamais supprimé et visible dans
+    ``git status``.
+    """
+    digest = hashlib.sha1(str(packages_file()).encode("utf-8")).hexdigest()[:16]
+    return _edit_lock_dir() / f"edit-{digest}.lock"
 
 
 @contextmanager
 def _packages_edit_lock() -> Iterator[None]:
-    path = packages_file()
-    lock_path = path.parent / f".{path.name}.nixpick.lock"
+    lock_path = packages_lock_path()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "w", encoding="utf-8") as lock_f:
         fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
@@ -442,6 +594,40 @@ def _load_last_op() -> dict | None:
 def _backup_matches_target(backup_path: Path, target: Path) -> bool:
     prefix = f"{target.name}.bak."
     return backup_path.name.startswith(prefix) and backup_path.parent == target.parent
+
+
+BACKUP_KEEP = 5
+
+
+def prune_backups(keep: int = BACKUP_KEEP) -> list[Path]:
+    """Garde les ``keep`` sauvegardes les plus récentes, supprime les autres.
+
+    Chaque écriture crée un ``packages.nix.bak.<horodatage>`` : sans purge ils
+    s'accumulent à jamais dans le dépôt flake. L'horodatage ``%Y%m%d-%H%M%S``
+    est triable lexicalement, donc le tri par nom est aussi un tri chronologique.
+    """
+    target = packages_file()
+    prefix = f"{target.name}.bak."
+    try:
+        candidates = sorted(
+            (
+                p
+                for p in target.parent.iterdir()
+                if p.is_file() and p.name.startswith(prefix)
+            ),
+            key=lambda p: p.name,
+            reverse=True,
+        )
+    except OSError:
+        return []
+    removed: list[Path] = []
+    for path in candidates[max(0, keep) :]:
+        try:
+            path.unlink()
+            removed.append(path)
+        except OSError:
+            pass
+    return removed
 
 
 @dataclass(frozen=True, slots=True)
@@ -515,8 +701,53 @@ def undo_last_write() -> UndoResult:
     )
 
 
+class NixSyntaxError(ValueError):
+    """packages.nix illisible pour nix-instantiate après édition."""
+
+
+def validate_nix_syntax(path: Path) -> str | None:
+    """Retourne un message d'erreur ou None si OK / outil absent."""
+    if not shutil.which("nix-instantiate"):
+        return None
+    try:
+        subprocess.run(
+            ["nix-instantiate", "--parse", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+    except subprocess.CalledProcessError as err:
+        msg = (err.stderr or err.stdout or "").strip()
+        return msg[:500] if msg else "nix-instantiate --parse a échoué."
+    except (OSError, subprocess.TimeoutExpired) as err:
+        return str(err)
+    return None
+
+
+def _ensure_valid_packages_file(path: Path, backup: Path) -> None:
+    err = validate_nix_syntax(path)
+    if err is None:
+        return
+    restored = True
+    detail = ""
+    try:
+        _atomic_write_text(path, backup.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as restore_err:
+        restored = False
+        detail = f" Restauration impossible : {restore_err}."
+    state = "restauré depuis la sauvegarde" if restored else "NON restauré"
+    raise NixSyntaxError(
+        f"{path} invalide après modification ({state}).{detail} Détail : {err}"
+    )
+
+
 def _atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        mode = path.stat().st_mode & 0o777
+    except OSError:
+        mode = None
     fd, tmp_name = tempfile.mkstemp(
         dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
     )
@@ -525,6 +756,9 @@ def _atomic_write_text(path: Path, content: str) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
+        if mode is not None:
+            # mkstemp crée en 0600 : on réapplique le mode du fichier source.
+            os.chmod(tmp_name, mode)
         os.replace(tmp_name, path)
     except Exception:
         try:
@@ -548,6 +782,7 @@ class AddOutcome(Enum):
     ALREADY_LISTED = "already_listed"
     FILE_MISSING = "file_missing"
     BLOCK_MISSING = "block_missing"
+    INVALID_ATTR = "invalid_attr"
 
 
 @dataclass
@@ -559,7 +794,7 @@ class AddFailure:
 def plan_add(attr: str, description: str) -> AddPlan | AddFailure:
     invalid = _validate_attr_name(attr)
     if invalid:
-        return AddFailure(AddOutcome.BLOCK_MISSING, invalid)
+        return AddFailure(AddOutcome.INVALID_ATTR, invalid)
 
     lines_or_err = _read_packages_lines()
     if isinstance(lines_or_err, AddFailure):
@@ -599,30 +834,28 @@ def commit_add(plan: AddPlan, dry_run: bool = False) -> None:
 
     with _packages_edit_lock():
         path = packages_file()
-        lines = path.read_text().splitlines(keepends=True)
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
         if already_listed(lines, plan.attr):
             raise LookupError(f"{plan.attr} est déjà listé.")
         insert_at, _ = _find_insertion_point(lines)
         shutil.copy2(path, plan.backup_path)
         lines.insert(insert_at, plan.new_line)
         _atomic_write_text(path, "".join(lines))
+        _ensure_valid_packages_file(path, plan.backup_path)
         _record_last_op("add", plan.attr, plan.backup_path, path)
+        prune_backups()
 
 
 def _find_insertion_point(lines: list[str]) -> tuple[int, str]:
     anchor = packages_anchor()
-    path = packages_file()
-    anchor_re = re.compile(rf"^\s*{re.escape(anchor)}\b")
-    start = next((i for i, l in enumerate(lines) if anchor_re.match(l)), None)
+    start, end = _find_package_block(lines)
     if start is None:
-        raise LookupError(f"« {anchor} » introuvable dans {path}")
-
-    end = next(
-        (i for i in range(start + 1, len(lines)) if lines[i].strip() == "];"),
-        None,
-    )
+        raise LookupError(
+            f"Bloc « {anchor} » absent, multiple ou dans une forme non prise en charge. "
+            "Format attendu : anchor = with pkgs; [ … ];"
+        )
     if end is None:
-        raise LookupError(f"Fin du bloc « {anchor} » introuvable.")
+        raise LookupError(f"Fin du bloc « {anchor} » introuvable ou bloc Nix non équilibré.")
 
     indent = "  "
     for line in lines[start + 1 : end]:
@@ -700,7 +933,7 @@ def commit_remove(plan: RemovePlan, dry_run: bool = False) -> None:
 
     with _packages_edit_lock():
         path = packages_file()
-        lines = path.read_text().splitlines(keepends=True)
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
         line_idx = find_package_line_index(lines, plan.attr)
         if line_idx is None:
             raise LookupError(f"Ligne introuvable pour {plan.attr}")
@@ -708,4 +941,6 @@ def commit_remove(plan: RemovePlan, dry_run: bool = False) -> None:
         shutil.copy2(path, plan.backup_path)
         del lines[line_idx]
         _atomic_write_text(path, "".join(lines))
+        _ensure_valid_packages_file(path, plan.backup_path)
         _record_last_op("remove", plan.attr, plan.backup_path, path)
+        prune_backups()

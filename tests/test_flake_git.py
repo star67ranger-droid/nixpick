@@ -25,6 +25,28 @@ def test_list_untracked(flake_repo: Path) -> None:
     assert paths == ["dotfiles/scripts/new.sh"]
 
 
+def test_nixpick_lock_not_listed(flake_repo: Path) -> None:
+    """QUA-01 : le verrou d'édition ne doit jamais être proposé au git add."""
+    lock = flake_repo / "modules" / ".packages.nix.nixpick.lock"
+    lock.write_text("", encoding="utf-8")
+    paths, err = list_untracked_paths(flake_repo)
+    assert err is None
+    assert not any(p.endswith(".nixpick.lock") for p in paths)
+
+
+def test_list_untracked_quoted_paths(flake_repo: Path) -> None:
+    """SEC-02 : espaces / non-ASCII ne doivent pas rester quotés (git -z)."""
+    spaced = flake_repo / "dotfiles" / "with space.nix"
+    spaced.parent.mkdir(parents=True, exist_ok=True)
+    spaced.write_text("", encoding="utf-8")
+    (flake_repo / "dotfiles" / "été.nix").write_text("", encoding="utf-8")
+    paths, err = list_untracked_paths(flake_repo)
+    assert err is None
+    assert "dotfiles/with space.nix" in paths
+    assert "dotfiles/été.nix" in paths
+    assert not any(p.startswith('"') for p in paths)
+
+
 def test_untracked_outside_flake_prefix_ignored(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -53,6 +75,18 @@ def test_untracked_outside_flake_prefix_ignored(
     assert err is None
     assert any(p.endswith("inside.nix") for p in paths)
     assert "outside.txt" not in paths
+
+
+def test_packages_nix_bak_backup_not_listed(flake_repo: Path) -> None:
+    bak = flake_repo / "modules" / "packages.nix.bak.20260925-210653"
+    bak.write_text("# backup\n", encoding="utf-8")
+    real = flake_repo / "dotfiles" / "track-me.nix"
+    real.parent.mkdir(parents=True, exist_ok=True)
+    real.write_text("", encoding="utf-8")
+    paths, err = list_untracked_paths(flake_repo)
+    assert err is None
+    assert not any(".bak." in p for p in paths)
+    assert "dotfiles/track-me.nix" in paths
 
 
 def test_check_fails_with_untracked(flake_repo: Path) -> None:

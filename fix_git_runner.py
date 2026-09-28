@@ -44,6 +44,14 @@ def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
         print(f"[dry-run] {format_git_add_command(git_top, paths)}")
         return 0
 
+    # Inventaire toujours affiché — y compris avec -y : on ne devine jamais
+    # ce qui va être ajouté au dépôt.
+    print(f"Fichiers non suivi(s) à ajouter à {git_top} ({len(paths)}) :")
+    for p in shown:
+        print(f"  • {p}")
+    if extra > 0:
+        print(f"  … et {extra} autre(s).")
+
     if not yes:
         if not sys.stdin.isatty():
             print(
@@ -53,13 +61,8 @@ def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
                 file=sys.stderr,
             )
             return 1
-        print(f"Ajouter {len(paths)} fichier(s) non suivi(s) au dépôt {git_top} ?")
-        for p in shown:
-            print(f"  • {p}")
-        if extra > 0:
-            print(f"  … et {extra} autre(s).")
         try:
-            answer = input("[o/N] ").strip().lower()
+            answer = input(f"Ajouter ces {len(paths)} fichier(s) ? [o/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
             return 1

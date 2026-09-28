@@ -9,7 +9,7 @@ Conçu pour une config **modulaire** (`modules/packages.nix`), pas pour tout met
 ## Prérequis
 
 - **NixOS** (ou machine avec `nix-env` / `nix eval` sur `<nixpkgs>`)
-- Python **3.11+**
+- Python **3.12+**
 - Optionnel : **Rofi** pour `nixpick --rofi`
 
 ## Installation
@@ -29,7 +29,7 @@ Le script crée un venv, installe les deps, lie `nixpick` et `nixpick-rofi` dans
 ```bash
 cd nixpick
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e '.[dev]'
 chmod +x bin/nixpick
 ln -sf "$(pwd)/bin/nixpick" ~/.local/bin/nixpick
 mkdir -p ~/.config/nixpick
@@ -59,7 +59,7 @@ Fichier : `~/.config/nixpick/config.toml`
 ```toml
 packages_file = "/etc/nixos/modules/packages.nix"
 packages_anchor = "environment.systemPackages"
-rebuild_command = "sudo nixos-rebuild switch --flake /etc/nixos#nixos"
+rebuild_command = ["sudo", "nixos-rebuild", "switch", "--flake", "/etc/nixos#nixos"]
 transparent_background = false
 ```
 
@@ -71,7 +71,7 @@ Variables d’environnement (prioritaires) :
 |----------|------|
 | `NIXPICK_PACKAGES_FILE` | Fichier `.nix` à modifier |
 | `NIXPICK_PACKAGES_ANCHOR` | Ligne d’ancrage (défaut `environment.systemPackages`) |
-| `NIXPICK_REBUILD_COMMAND` | Affichée après ajout / retrait |
+| `NIXPICK_REBUILD_COMMAND` | Arguments JSON de la commande de rebuild, p. ex. `["sudo", "nixos-rebuild", "switch"]` (aucun shell) |
 
 Vérifier :
 
@@ -83,7 +83,7 @@ nixpick --print-config
 
 | Commande | Description |
 |----------|-------------|
-| `nixpick` | **TUI** Textual (recherche live, détail, ajout / retrait) |
+| `nixpick` | **TUI** OpenTUI (recherche live, détail, ajout / retrait) |
 | `nixpick firefox` | Mode **CLI** interactif |
 | `nixpick --remove spotify` | Retire un attribut du fichier configuré |
 | `nixpick --rofi` | Lanceur **Rofi** (2 étapes : terme → liste) |
@@ -106,10 +106,17 @@ nixpick --print-config
 
 ### TUI — raccourcis
 
-- **Taper** : recherche (min. 2 caractères)
-- **↵** : ajouter · **x** : retirer (si déjà dans la config)
-- **l** : catalogue des paquets déjà listés
-- **i** : masquer les paquets installés · **d** : simulation
+Style **fuzzy-finder** : recherche centrée en haut, liste à gauche (`▸` sélection,
+`●` déjà installé, version alignée à droite), panneau **détail** à droite,
+suggestions au repos, footer en bas.
+
+- **Taper** : recherche live (min. 2 caractères)
+- **↑ ↓** (ou **Ctrl+N** / **Ctrl+P**) : naviguer sans quitter la recherche
+- **PageUp** / **PageDown** : d’un écran de résultats
+- **↵** : ajouter · **Ctrl+X** : retirer (si déjà dans la config)
+- **Ctrl+L** : catalogue des paquets déjà listés
+- **Ctrl+I** : masquer les paquets installés · **Ctrl+D** : simulation
+- **Tab** : basculer recherche / liste (puis `x l i d t q` au focus liste) · **Esc** : vider la recherche, puis quitter
 - **Ctrl+R** : reconstruire l’index · **?** / **F1** : aide
 
 Les entrées déjà présentes dans `systemPackages` sont marquées **●**.
@@ -122,11 +129,11 @@ Les entrées déjà présentes dans `systemPackages` sont marquées **●**.
 
 Après validation : notification, puis menu **« Corriger Git (fix-git) »** (si des `??` bloquent le flake), **« Lancer le rebuild »** / **« Plus tard »**. Le rebuild s’ouvre dans un terminal (kitty, foot, …) si tu acceptes. Sinon : `nixpick rebuild`.
 
-Thèmes : `assets/rofi/` dans le dépôt, ou `~/.config/rofi/nixpick*.rasi` (installés par `install.sh`).
+Thèmes : `assets/rofi/` dans le dépôt ; nixpick régénère `~/.config/nixpick/rofi/*.rasi` à chaque lancement (les copies de `~/.config/rofi/` ne servent qu'en secours — voir [docs/THEMES.md](docs/THEMES.md)).
 
 ## Comportement
 
-- Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours)
+- Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours). Prérequis : `nix-env` dans le PATH (`nixpick doctor`).
 - Descriptions : `nix eval` à la demande pour les résultats affichés
 - Rebuild **uniquement** si tu confirmes (`nixpick rebuild`, ou « Lancer le rebuild » en Rofi, ou `o` après un ajout CLI)
 - **Fichiers non suivis par Git** dans `/etc/nixos` : le flake ne voit pas les nouveaux chemins (`dotfiles/…`) tant qu’ils ne sont pas `git add`. `nixpick doctor` liste les `??` et propose la commande ; `nixpick rebuild` refuse de lancer `sudo` tant que c’est le cas (Rofi affiche un rappel).
@@ -146,7 +153,9 @@ Thèmes : `assets/rofi/` dans le dépôt, ou `~/.config/rofi/nixpick*.rasi` (ins
 ## Limites
 
 - Ne détecte pas les paquets activés via des **options** (`programs.firefox.enable`, etc.)
-- Un seul bloc `environment.systemPackages` par fichier (configurable via `packages_anchor`)
+- Un seul bloc `environment.systemPackages` par fichier, forme **`anchor = with pkgs; [ … ];`** (configurable via `packages_anchor`). Pas de `++`, listes imbriquées hors paquets simples, ni plusieurs blocs.
+- Après chaque écriture, validation optionnelle via `nix-instantiate --parse` (restaure la sauvegarde si le fichier est invalide).
+- `rebuild_command` est une **liste d’arguments** (TOML tableau ou chaîne parsée par `shlex`) — pas d’évaluation shell sauf le terminal interactif du rebuild.
 - Pas de prise en charge Home Manager pour l’instant
 
 ## Licence
