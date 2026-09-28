@@ -40,6 +40,19 @@ def test_fix_git_no_tty(flake_repo: Path, monkeypatch: pytest.MonkeyPatch) -> No
     assert run_fix_git(yes=False) == 1
 
 
+def test_fix_git_packages_outside_flake_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pkg = tmp_path / "standalone" / "packages.nix"
+    pkg.parent.mkdir(parents=True)
+    pkg.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("NIXPICK_PACKAGES_FILE", str(pkg))
+    from config import reset_settings_cache
+
+    reset_settings_cache()
+    assert run_fix_git(yes=True) == 1
+
+
 def test_fix_git_no_git_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     lone = tmp_path / "flakeonly"
     lone.mkdir()
