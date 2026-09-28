@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -9,12 +10,14 @@ import pytest
 import engine as engine_module
 from config import reset_settings_cache
 from engine import (
+    NixCommandError,
     PackageIndex,
     PackageRow,
     find_package_line_index,
     list_installed_attrs,
     plan_add,
     plan_remove,
+    run,
     search_index,
 )
 
@@ -223,3 +226,37 @@ def test_commit_add_purge_les_anciennes_sauvegardes(
     assert plan.backup_path.name in remaining
     # les plus anciennes sont parties
     assert "packages.nix.bak.20200101-000000" not in remaining
+
+
+def test_run_raises_when_binary_missing() -> None:
+    with pytest.raises(NixCommandError, match="introuvable"):
+        run(["nixpick-nonexistent-binary-qa", "--help"], timeout=5)
+
+
+def test_run_raises_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _timeout(*_args: object, **_kwargs: object) -> str:
+        raise subprocess.TimeoutExpired(cmd=["nix-env"], timeout=1)
+
+    monkeypatch.setattr(engine_module.subprocess, "run", _timeout)
+    with pytest.raises(NixCommandError, match="dépassé"):
+        run(["nix-env", "-qaP"], timeout=1)
+
+
+def test_run_raises_on_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(
+            1, ["nix-env"], stderr="simulated nix-env failure"
+        )
+
+    monkeypatch.setattr(engine_module.subprocess, "run", _fail)
+    with pytest.raises(NixCommandError, match="simulated"):
+        run(["nix-env", "-qaP"], timeout=10)
+
+
+def test_run_wraps_os_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _os_err(*_args: object, **_kwargs: object) -> str:
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(engine_module.subprocess, "run", _os_err)
+    with pytest.raises(NixCommandError, match="indisponible"):
+        run(["nix-env", "-qaP"], timeout=10)

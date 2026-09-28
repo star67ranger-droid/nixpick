@@ -65,6 +65,8 @@ def run(cmd: list[str], timeout: int) -> str:
         raise NixCommandError(f"{cmd[0]} a dépassé {timeout} s.")
     except subprocess.CalledProcessError as err:
         raise NixCommandError((err.stderr or err.stdout or "").strip()[:400])
+    except OSError as err:
+        raise NixCommandError(f"{cmd[0]} indisponible : {err}") from err
 
 
 def _atomic_write_json(path: Path, data: object) -> None:
