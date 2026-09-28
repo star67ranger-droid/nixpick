@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 — non publié
+## 0.4.0 — 2026-09-28
 
 - **TUI** : migration de Textual vers **OpenTUI** (rendu direct, `tui_css.py` supprimé, `native_env` pour libstdc++ sur NixOS)
 - **TUI** : interface refondue en **fuzzy-finder centré** (style telescope / fzf) :
