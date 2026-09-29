@@ -912,11 +912,14 @@ class TuiApp:
             self.notify(t("tui.no_clipboard"), level="warning", timeout=3)
             return
         try:
-            subprocess.run(
+            proc = subprocess.run(
                 argv, input=row.attr, capture_output=True, text=True,
                 timeout=10, check=False,
             )
         except (OSError, subprocess.SubprocessError):
+            self.notify(t("tui.no_clipboard"), level="warning", timeout=3)
+            return
+        if proc.returncode != 0:
             self.notify(t("tui.no_clipboard"), level="warning", timeout=3)
             return
         self.notify(t("tui.yanked", attr=row.attr), timeout=2)

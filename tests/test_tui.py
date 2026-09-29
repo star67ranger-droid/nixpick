@@ -790,6 +790,37 @@ def test_yank_sans_outil_presse_papiers(
     _run(scenario())
 
 
+def test_yank_echec_outil_presse_papiers(
+    tui_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """wl-copy en échec (code ≠ 0) : pas de faux succès."""
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/wl-copy")
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        class Proc:
+            returncode = 1
+
+        return Proc()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            setup.mock_input.type_text("fire")
+            assert await _pump(setup, lambda: bool(app.shown.peek()), timeout=3.0)
+            setup.mock_input.press_key("tab")
+            await _pump(setup, timeout=0.2)
+            setup.mock_input.press_key("y")
+            await _pump(setup, timeout=0.3)
+            assert "indisponible" in _text(setup)
+            assert "Copié" not in _text(setup)
+        finally:
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
 def test_petit_terminal_bloque_validation_modale() -> None:
     """Sous les seuils : 'y' ne valide pas à l'aveugle, esc annule."""
     from types import SimpleNamespace
