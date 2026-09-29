@@ -68,6 +68,21 @@ def test_print_sans_resultat(
     assert main() == 1
 
 
+def test_print_index_indisponible(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from engine import NixCommandError
+
+    def fail_index(*args: object, **kwargs: object) -> dict[str, object]:
+        raise NixCommandError("nix-env a échoué")
+
+    monkeypatch.setattr("nixpick.load_index", fail_index)
+    monkeypatch.setattr("sys.argv", ["nixpick", "--print", "htop"])
+    assert main() == 1
+    err = capsys.readouterr().err
+    assert "nix-env" in err or "échoué" in err
+
+
 def test_erreur_inattendue_renvoie_1_avec_url(
     clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

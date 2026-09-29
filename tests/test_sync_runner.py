@@ -212,3 +212,55 @@ def test_install_profile_refs_erreur_os(
     monkeypatch.setattr("subprocess.run", boom)
     assert sync_runner.install_profile_refs(["nixpkgs#htop"]) == 1
     assert "pas de nix" in capsys.readouterr().err
+
+
+def test_upgrade_profile_refs_erreur_os(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        raise OSError("pas de nix")
+
+    monkeypatch.setattr("subprocess.run", boom)
+    assert sync_runner.upgrade_profile_refs(["legacyPackages.x86_64-linux.htop"]) == 1
+    assert "pas de nix" in capsys.readouterr().err
+
+
+def test_sync_profile_list_os_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _patch_nix(monkeypatch)
+
+    def boom(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        if argv[:3] == ["nix", "profile", "list"]:
+            raise OSError("nix absent")
+        raise AssertionError(argv)
+
+    monkeypatch.setattr("subprocess.run", boom)
+    assert run_sync() == 1
+    assert "nix absent" in capsys.readouterr().err
+
+
+def test_sync_upgrade_seul_sans_install(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Tous listés déjà installés : --upgrade ne lance que profile upgrade."""
+    calls = _patch_nix(monkeypatch, listed=["htop"], answers=["o"])
+    assert run_sync(upgrade=True) == 0
+    assert calls == [
+        ["nix", "profile", "upgrade", "legacyPackages.x86_64-linux.htop"],
+    ]
+    assert "mis à jour" in capsys.readouterr().out.lower()
+
+
+def test_sync_interruption_prompt(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls = _patch_nix(monkeypatch, listed=["htop", "firefox"])
+
+    def interrupt(_prompt: str = "") -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", interrupt)
+    assert run_sync(upgrade=True) == 1
+    assert calls == []
+    capsys.readouterr()
