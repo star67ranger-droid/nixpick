@@ -73,3 +73,20 @@ def test_conseils_en_anglais() -> None:
     advice = explain_error(subprocess.CalledProcessError(-9, ["nix-env"]))
     assert advice is not None and "RAM" in advice
     assert explain_error(RuntimeError("not tracked by Git")) is not None
+
+
+def test_called_process_error_non_sigkill_uses_message() -> None:
+    err = subprocess.CalledProcessError(
+        1,
+        ["git"],
+        stderr="error: path is not tracked by Git",
+    )
+    advice = explain_error(err)
+    assert advice is not None and "fix-git" in advice
+
+
+def test_file_not_found_without_filename_uses_placeholder() -> None:
+    err = FileNotFoundError("missing")
+    err.filename = None  # type: ignore[misc]
+    advice = explain_error(err)
+    assert advice is not None and "?" in advice

@@ -45,6 +45,21 @@ def test_rofi_sans_rofi_renvoie_1(
     assert "rofi introuvable" in capsys.readouterr().err
 
 
+def test_build_index_only_nix_error_includes_advice(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from engine import NixCommandError
+
+    def fail_index(on_status: object = None) -> dict:
+        raise NixCommandError("Command died with SIGKILL.")
+
+    monkeypatch.setattr("nixpick.build_index", fail_index)
+    monkeypatch.setattr("sys.argv", ["nixpick", "--build-index-only"])
+    assert main() == 1
+    err = capsys.readouterr().err
+    assert "SIGKILL" in err or "RAM" in err
+
+
 def test_erreur_inattendue_renvoie_1_avec_url(
     clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -11,6 +11,8 @@ from config import (
     get_settings,
     load_transparent_background,
     reset_settings_cache,
+    resolve_language,
+    save_language,
     save_transparent_background,
 )
 
@@ -22,6 +24,7 @@ def cfg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.delenv("NIXPICK_PACKAGES_FILE", raising=False)
     monkeypatch.delenv("NIXPICK_PACKAGES_ANCHOR", raising=False)
     monkeypatch.delenv("NIXPICK_REBUILD_COMMAND", raising=False)
+    monkeypatch.delenv("NIXPICK_LANGUAGE", raising=False)
     reset_settings_cache()
     return tmp_path
 
@@ -73,3 +76,39 @@ def test_packages_file_non_string_refuse(cfg: Path) -> None:
     )
     with pytest.raises(ValueError, match="packages_file"):
         get_settings()
+
+
+def test_resolve_language_defaults_to_french(cfg: Path) -> None:
+    assert resolve_language() == "fr"
+
+
+def test_resolve_language_reads_config(cfg: Path) -> None:
+    (cfg / "config.toml").write_text('language = "en"\n', encoding="utf-8")
+    assert resolve_language() == "en"
+
+
+def test_resolve_language_env_overrides_config(
+    cfg: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (cfg / "config.toml").write_text('language = "fr"\n', encoding="utf-8")
+    monkeypatch.setenv("NIXPICK_LANGUAGE", "en")
+    assert resolve_language() == "en"
+
+
+def test_resolve_language_unknown_code_falls_back_to_french(cfg: Path) -> None:
+    (cfg / "config.toml").write_text('language = "de"\n', encoding="utf-8")
+    assert resolve_language() == "fr"
+
+
+def test_resolve_language_invalid_toml_falls_back(cfg: Path) -> None:
+    (cfg / "config.toml").write_text("not valid {{{\n", encoding="utf-8")
+    assert resolve_language() == "fr"
+
+
+def test_save_language_persists_and_rejects_unknown(cfg: Path) -> None:
+    save_language("en")
+    text = (cfg / "config.toml").read_text(encoding="utf-8")
+    assert 'language = "en"' in text
+    assert resolve_language() == "en"
+    with pytest.raises(ValueError, match="langue inconnue"):
+        save_language("de")
