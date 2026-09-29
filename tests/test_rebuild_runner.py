@@ -96,3 +96,30 @@ def test_run_rebuild_terminal_env_invalide_repli(
         assert run_rebuild(yes=True, in_terminal=True) == 0
         assert run.call_args.args[0][0] == "alacritty"
     assert "introuvable" in capsys.readouterr().err
+
+
+def test_run_rebuild_refuse_sans_tty_sans_yes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    assert run_rebuild(yes=False) == 1
+    assert "nixpick rebuild --yes" in capsys.readouterr().err
+
+
+def test_run_rebuild_commande_vide(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("rebuild_runner.rebuild_command", lambda: ())
+    assert run_rebuild(yes=True) == 1
+    assert "rebuild_command vide" in capsys.readouterr().err
+
+
+def test_run_rebuild_terminal_sans_emulateur(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("rebuild_runner._default_terminal", lambda: None)
+    monkeypatch.delenv("NIXPICK_REBUILD_TERMINAL", raising=False)
+    assert run_rebuild(yes=True, in_terminal=True) == 1
+    err = capsys.readouterr().err
+    assert "aucun émulateur" in err
+    assert "nixos-rebuild-test" in err
