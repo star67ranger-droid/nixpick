@@ -342,6 +342,8 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
         return 1
 
     t, b = notify_success_add(attr, plan.backup_path)
+    if plan.created_file:
+        b = f"Fichier créé : {plan.packages_file}\n{b}"
     _notify(t, b)
     _offer_rebuild()
     return 0

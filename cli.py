@@ -167,6 +167,8 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
         return 1
 
     say(f"{GREEN}Ajouté.{RESET}")
+    if plan.created_file:
+        say(f"Fichier créé : {plan.packages_file}")
     for line in cli_success_lines(plan.backup_path):
         say(line if line else "")
     return _maybe_rebuild_after_cli()

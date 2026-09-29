@@ -20,7 +20,7 @@ from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 
-from config import get_settings
+from config import get_settings, is_nixos
 
 
 def packages_file() -> Path:
@@ -420,6 +420,40 @@ def _read_packages_lines() -> list[str] | AddFailure:
     return path.read_text(encoding="utf-8").splitlines(keepends=True)
 
 
+def _auto_create_allowed() -> bool:
+    """Création du fichier cible absent : uniquement hors NixOS.
+
+    Sur NixOS, un fichier manquant signale une vraie erreur de config (jamais
+    de squelette surprise dans /etc/nixos). Ailleurs, le premier ajout crée
+    la cible locale au lieu d'échouer sur « introuvable ».
+    """
+    return not is_nixos()
+
+
+def _packages_skeleton() -> str:
+    # Bloc multiligne obligatoire : _find_package_block exige que la ligne
+    # d'ancre se termine par `[` seul (pas de `[ ];` sur une ligne).
+    anchor = packages_anchor()
+    return (
+        "{ config, pkgs, ... }:\n"
+        "{\n"
+        f"  {anchor} = with pkgs; [\n"
+        "  ];\n"
+        "}\n"
+    )
+
+
+def _create_packages_skeleton() -> AddFailure | None:
+    """Crée le fichier cible absent (squelette avec l'ancre configurée)."""
+    path = packages_file()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_packages_skeleton(), encoding="utf-8")
+    except OSError as err:
+        return AddFailure(AddOutcome.FILE_MISSING, f"{path} introuvable ({err}).")
+    return None
+
+
 def _strip_nix_line_comment(line: str) -> str:
     """Retire les commentaires `#` hors chaînes, sans parser les chaînes Nix."""
     in_string = False
@@ -776,6 +810,7 @@ class AddPlan:
     context_lines: list[str]
     packages_file: Path
     backup_path: Path
+    created_file: bool = False
 
 
 class AddOutcome(Enum):
@@ -797,6 +832,17 @@ def plan_add(attr: str, description: str) -> AddPlan | AddFailure:
         return AddFailure(AddOutcome.INVALID_ATTR, invalid)
 
     lines_or_err = _read_packages_lines()
+    created = False
+    if (
+        isinstance(lines_or_err, AddFailure)
+        and lines_or_err.outcome == AddOutcome.FILE_MISSING
+        and _auto_create_allowed()
+    ):
+        failure = _create_packages_skeleton()
+        if failure is not None:
+            return failure
+        created = True
+        lines_or_err = _read_packages_lines()
     if isinstance(lines_or_err, AddFailure):
         return lines_or_err
     lines = lines_or_err
@@ -825,6 +871,7 @@ def plan_add(attr: str, description: str) -> AddPlan | AddFailure:
         context_lines=context,
         packages_file=packages_file(),
         backup_path=_backup_path(),
+        created_file=created,
     )
 
 

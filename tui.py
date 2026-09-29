@@ -798,7 +798,10 @@ class TuiApp:
             return
         self.installed = list_installed_attrs()
         self._rebuild_list()
-        self.notify(f"Ajouté.  apply : {format_rebuild_command()}", timeout=6)
+        msg = f"Ajouté.  apply : {format_rebuild_command()}"
+        if plan.created_file:
+            msg = f"Fichier créé : {plan.packages_file}.  {msg}"
+        self.notify(msg, timeout=6)
 
     def _commit_remove(self, plan: RemovePlan, row: ResultRow | None) -> None:
         if self.dry_run.peek():

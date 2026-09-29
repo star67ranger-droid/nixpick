@@ -150,6 +150,12 @@ Thèmes : `assets/rofi/` dans le dépôt ; nixpick régénère `~/.config/nixpic
 
 ## Comportement
 
+- Fichier cible : `/etc/nixos/modules/packages.nix` sur NixOS ; **hors NixOS**
+  (`/etc/nixos` absent) : repli sur `~/.config/nixpick/packages.nix`, créé
+  (squelette) au premier ajout — plus d'erreur « introuvable », le message
+  de succès l'indique. Le rebuild reste NixOS-only (`NIXPICK_PACKAGES_FILE`
+  et `NIXPICK_REBUILD_COMMAND` forcent toujours ces valeurs).
+
 - Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours). Prérequis : `nix-env` dans le PATH (`nixpick doctor`).
 - Descriptions : `nix eval` à la demande pour les résultats affichés
 - Rebuild **uniquement** si tu confirmes (`nixpick rebuild`, ou « Lancer le rebuild » en Rofi, ou `o` après un ajout CLI)

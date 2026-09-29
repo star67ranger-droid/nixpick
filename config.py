@@ -22,6 +22,23 @@ DEFAULT_ANCHOR = "environment.systemPackages"
 DEFAULT_REBUILD = "sudo nixos-rebuild switch --flake /etc/nixos#nixos"
 
 
+def is_nixos() -> bool:
+    """NixOS détecté par son dépôt de configuration."""
+    return Path("/etc/nixos").exists()
+
+
+def fallback_packages_file() -> Path:
+    """Cible locale hors NixOS : utiliser nixpick sans /etc/nixos."""
+    return Path.home() / ".config" / "nixpick" / "packages.nix"
+
+
+def default_packages_file() -> Path:
+    """Fichier cible sans config explicite (ni TOML ni variable d'env)."""
+    if is_nixos():
+        return DEFAULT_PACKAGES_FILE
+    return fallback_packages_file()
+
+
 @dataclass(frozen=True)
 class Settings:
     packages_file: Path
@@ -131,7 +148,7 @@ def get_settings() -> Settings:
     nix: dict[str, Any] = raw_nix if isinstance(raw_nix, dict) else data
 
     packages_raw = os.environ.get("NIXPICK_PACKAGES_FILE") or nix.get(
-        "packages_file", str(DEFAULT_PACKAGES_FILE)
+        "packages_file", str(default_packages_file())
     )
     packages_path = Path(packages_raw).expanduser()
     if packages_path.suffix != ".nix":
