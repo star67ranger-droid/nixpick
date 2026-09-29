@@ -50,6 +50,8 @@ py-modules = [
   "rofi_theme",
   "native_env",
   "theme",
+  "i18n",
+  "errors",
 ]
 
 [tool.setuptools.data-files]

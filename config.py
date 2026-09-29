@@ -10,6 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from i18n import DEFAULT as DEFAULT_LANGUAGE
+from i18n import SUPPORTED as SUPPORTED_LANGUAGES
+from i18n import t
+
 __version__ = "0.4.0"
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -104,6 +108,79 @@ def save_transparent_background(enabled: bool) -> None:
     _atomic_write_config(CONFIG_FILE, content)
 
 
+_ACTIVE_LANGUAGE_RE = re.compile(r"^\s*language\s*=", re.MULTILINE)
+
+def resolve_language() -> str:
+    """Langue d'affichage : env, puis config, sinon français.
+
+    Ne lève jamais (une préférence d'affichage ne doit pas empêcher
+    le démarrage) : valeur inconnue → français.
+    """
+    code = (os.environ.get("NIXPICK_LANGUAGE") or "").strip().lower()
+    if code in SUPPORTED_LANGUAGES:
+        return code
+    try:
+        data = _load_toml()
+    except Exception:  # noqa: BLE001 — config illisible : repli silencieux ici
+        return DEFAULT_LANGUAGE
+    raw = data.get("language", "")
+    code = raw.strip().lower() if isinstance(raw, str) else ""
+    return code if code in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+
+
+def save_language(code: str) -> None:
+    """Persiste `language = "fr"|"en"` (même upsert que le fond transparent)."""
+    normalized = code.strip().lower()
+    if normalized not in SUPPORTED_LANGUAGES:
+        raise ValueError(t("cfg.bad_lang", code=code))
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    existing = CONFIG_FILE.read_text(encoding="utf-8") if CONFIG_FILE.exists() else ""
+    if _ACTIVE_LANGUAGE_RE.search(existing):
+        text = re.sub(
+            r"^\s*language\s*=.*$",
+            f'language = "{normalized}"',
+            existing,
+            flags=re.MULTILINE,
+        )
+    else:
+        text = existing.rstrip() + f'\n\nlanguage = "{normalized}"\n'
+    content = text if text.endswith("\n") else text + "\n"
+    _atomic_write_config(CONFIG_FILE, content)
+
+
+_ACTIVE_PACKAGES_RE = re.compile(r"^\s*packages_file\s*=", re.MULTILINE)
+
+
+def _quote_toml(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def save_packages_file(raw: str) -> Path:
+    """Persiste packages_file (upsert) et recharge les réglages.
+
+    Lève ValueError si le chemin n'est pas un .nix (même règle qu'au
+    démarrage) : le menu paramètres affiche l'erreur et reste ouvert.
+    """
+    candidate = Path(raw.strip()).expanduser()
+    if candidate.suffix != ".nix":
+        raise ValueError(t("cfg.bad_suffix", path=candidate))
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    existing = CONFIG_FILE.read_text(encoding="utf-8") if CONFIG_FILE.exists() else ""
+    if _ACTIVE_PACKAGES_RE.search(existing):
+        text = re.sub(
+            r"^\s*packages_file\s*=.*$",
+            f"packages_file = {_quote_toml(str(candidate))}",
+            existing,
+            flags=re.MULTILINE,
+        )
+    else:
+        text = existing.rstrip() + f"\n\npackages_file = {_quote_toml(str(candidate))}\n"
+    content = text if text.endswith("\n") else text + "\n"
+    _atomic_write_config(CONFIG_FILE, content)
+    reset_settings_cache()
+    return candidate
+
+
 def _atomic_write_config(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     import tempfile
@@ -135,11 +212,10 @@ def _load_toml() -> dict:
             data = tomllib.load(fh)
     except tomllib.TOMLDecodeError as err:
         raise ConfigError(
-            f"{CONFIG_FILE} : TOML invalide — {err} "
-            "(compare avec config.example.toml)."
+            t("cfg.bad_toml", path=CONFIG_FILE, err=err)
         ) from err
     except OSError as err:
-        raise ConfigError(f"{CONFIG_FILE} illisible — {err}") from err
+        raise ConfigError(t("cfg.unreadable", path=CONFIG_FILE, err=err)) from err
     return data if isinstance(data, dict) else {}
 
 
@@ -156,18 +232,16 @@ def get_settings() -> Settings:
         "packages_file", str(default_packages_file())
     )
     if not isinstance(packages_raw, str):
-        raise ValueError("packages_file doit être une chaîne (chemin .nix)")
+        raise ValueError(t("cfg.bad_type"))
     packages_path = Path(packages_raw).expanduser()
     if packages_path.suffix != ".nix":
-        raise ValueError(
-            f"packages_file doit être un fichier .nix, reçu : {packages_path}"
-        )
+        raise ValueError(t("cfg.bad_suffix", path=packages_path))
     packages_path = packages_path.resolve()
     anchor = os.environ.get("NIXPICK_PACKAGES_ANCHOR") or nix.get(
         "packages_anchor", DEFAULT_ANCHOR
     )
     if not isinstance(anchor, str) or not anchor.strip():
-        raise ValueError("packages_anchor doit être une chaîne non vide")
+        raise ValueError(t("cfg.bad_anchor"))
     rebuild = os.environ.get("NIXPICK_REBUILD_COMMAND") or nix.get(
         "rebuild_command", DEFAULT_REBUILD
     )
@@ -178,9 +252,9 @@ def get_settings() -> Settings:
     elif isinstance(rebuild, list) and all(isinstance(arg, str) for arg in rebuild):
         rebuild_argv = tuple(rebuild)
     else:
-        raise ValueError("rebuild_command doit être une chaîne ou une liste d'arguments")
+        raise ValueError(t("cfg.bad_rebuild"))
     if not rebuild_argv or any(not arg for arg in rebuild_argv):
-        raise ValueError("rebuild_command ne peut pas être vide")
+        raise ValueError(t("cfg.rebuild_empty"))
 
     _settings = Settings(
         packages_file=packages_path,

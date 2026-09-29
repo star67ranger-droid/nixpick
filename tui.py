@@ -53,6 +53,8 @@ from config import (  # noqa: E402
     format_rebuild_command,
     is_nixos,
     load_transparent_background,
+    save_language,
+    save_packages_file,
     save_transparent_background,
 )
 from engine import (  # noqa: E402
@@ -72,10 +74,12 @@ from engine import (  # noqa: E402
     index_age_days,
     list_installed_attrs,
     load_index,
+    packages_file,
     plan_add,
     plan_remove,
     search_index,
 )
+from i18n import get_language, set_language, t  # noqa: E402
 from messages import ISSUES_URL  # noqa: E402
 from theme import (  # noqa: E402
     TuiColors,
@@ -118,38 +122,39 @@ _MIN_UI_WIDTH = 40
 _MIN_UI_HEIGHT = 12
 
 _FOOTER_KEYS = (
-    ("↵", "ajouter"),
+    ("↵", "tui.footer_add"),
     # Au focus recherche (le défaut), `x` / `l` / `q` seraient tapés dans la
     # requête : on annonce les variantes `^` (ctrl) et `esc`, qui marchent quel
     # que soit le focus. Notation `^X` = ctrl+x, comme en less / tmux.
-    ("^X", "retirer"),
-    ("^L", "config"),
-    ("↑↓", "nav"),
-    ("^I", "masquer ●"),
-    ("^D", "simu"),
-    ("^T", "fond"),
-    ("^R", "index"),
-    ("?", "aide"),
-    ("esc", "quitter"),
+    ("^X", "tui.footer_remove"),
+    ("^L", "tui.footer_config"),
+    ("↑↓", "tui.footer_nav"),
+    ("^I", "tui.footer_hide"),
+    ("^D", "tui.footer_dry"),
+    ("^T", "tui.footer_bg"),
+    ("^R", "tui.footer_index"),
+    ("^S", "tui.footer_settings"),
+    ("?", "tui.footer_help"),
+    ("esc", "tui.footer_quit"),
 )
 
 _HELP_KEYS = (
-    ("taper", "cherche tout de suite (comme fzf)"),
-    ("↑ ↓", "navigue sans quitter la recherche"),
-    ("ctrl+n / p", "suivant / précédent (depuis la recherche)"),
-    ("pageup / down", "d'un écran de résultats"),
-    ("↵", "ajouter le paquet surligné"),
-    ("x", "retirer — au focus liste (sinon ^X)"),
-    ("l", "catalogue — au focus liste (sinon ^L)"),
-    ("tab", "aller à la liste, puis x l i d t q"),
-    ("esc", "vider la recherche, puis quitter"),
-    ("j k", "naviguer (quand la liste a le focus)"),
-    ("F1 / ?", "aide"),
-    ("ctrl+r", "reconstruire l'index"),
-    ("i / ctrl+i", "masquer ● (i : focus liste)"),
-    ("d / ctrl+d", "mode simulation (d : focus liste)"),
-    ("t / ctrl+t", "fond transparent (t : focus liste)"),
-    ("q", "quitter — au focus liste (sinon esc)"),
+    ("taper", "tui.help_type"),
+    ("↑ ↓", "tui.help_navigate"),
+    ("ctrl+n / p", "tui.help_nextprev"),
+    ("pageup / down", "tui.help_page"),
+    ("↵", "tui.help_enter"),
+    ("x", "tui.help_x"),
+    ("l", "tui.help_l"),
+    ("tab", "tui.help_tab"),
+    ("esc", "tui.help_esc"),
+    ("j k", "tui.help_jk"),
+    ("F1 / ?", "tui.help_help"),
+    ("ctrl+r", "tui.help_rebuild"),
+    ("i / ctrl+i", "tui.help_hide"),
+    ("d / ctrl+d", "tui.help_dry"),
+    ("t / ctrl+t", "tui.help_bg"),
+    ("q", "tui.help_quit"),
 )
 
 
@@ -174,12 +179,12 @@ def _index_error_message(err: BaseException) -> str:
     sur l'écran de chargement, sans le moindre indice à l'écran.
     """
     if isinstance(err, json.JSONDecodeError):
-        return "index illisible (~/.cache/nixpick/index.json) — Ctrl+R pour le reconstruire"
+        return t("tui.index_corrupt")
     if isinstance(err, OSError):
-        return f"index inaccessible : {err} — Ctrl+R pour réessayer"
+        return t("tui.index_io", err=err)
     if isinstance(err, NixCommandError):
-        return str(err) or "échec de nix — Ctrl+R pour réessayer"
-    return f"chargement de l'index impossible : {err} — Ctrl+R pour réessayer"
+        return str(err) or t("tui.index_nix")
+    return t("tui.index_unknown", err=err)
 
 
 def _line(text: str, fg: Any = None, *, bold: bool = False) -> Text:
@@ -241,15 +246,16 @@ def _footer_text(c: TuiColors, width: int) -> Any:
     """
     budget = max(20, width - 2)
     essential = {"?", "esc"}
+    entries = [(key, t(label_key)) for key, label_key in _FOOTER_KEYS]
     reserved = sum(
         display_width(key) + display_width(f" {label}") + 3
-        for key, label in _FOOTER_KEYS
+        for key, label in entries
         if key in essential
     )
     chosen: list[tuple[str, str]] = []
     used = 0
     deferred: list[tuple[str, str]] = []
-    for key, label in _FOOTER_KEYS:
+    for key, label in entries:
         cost = display_width(key) + display_width(f" {label}") + (3 if chosen else 0)
         if key in essential:
             deferred.append((key, label))
@@ -275,18 +281,22 @@ def _footer_text(c: TuiColors, width: int) -> Any:
 
 def _help_lines(c: TuiColors) -> list[Any]:
     lines: list[Any] = [
-        _row(("nixpick", c.primary, True), ("  raccourcis", c.text_muted, False)),
+        _row(
+            ("nixpick", c.primary, True), (t("tui.help_title"), c.text_muted, False)
+        ),
         _line(""),
     ]
-    for key, label in _HELP_KEYS:
+    for key, label_key in _HELP_KEYS:
         padded = f"{key:<14}"
-        lines.append(_row((f"  {padded}", c.accent, True), (label, c.text, False)))
+        lines.append(
+            _row((f"  {padded}", c.accent, True), (t(label_key), c.text, False))
+        )
     lines.append(_line(""))
-    lines.append(_line("Couleurs : section [colors] dans ~/.config/nixpick/config.toml", c.text_muted))
-    lines.append(_line("(voir docs/THEMES.md sur GitHub).", c.text_muted))
-    lines.append(_line("Transparence réelle = mode ANSI (comme superfile) + Kitty :", c.text_muted))
-    lines.append(_line("dans ~/.config/kitty/kitty.conf → background_opacity 0.85", c.text_muted))
-    lines.append(_line("Puis Ctrl+T ou t. Un nixos-rebuild n'est jamais lancé seul.", c.text_muted))
+    lines.append(_line(t("tui.help_colors"), c.text_muted))
+    lines.append(_line(t("tui.help_themes"), c.text_muted))
+    lines.append(_line(t("tui.help_term1"), c.text_muted))
+    lines.append(_line(t("tui.help_term2"), c.text_muted))
+    lines.append(_line(t("tui.help_term3"), c.text_muted))
     return lines
 
 
@@ -342,7 +352,7 @@ class TuiApp:
         self.rows: Signal = Signal([])
         self.shown: Signal = Signal([])
         self.cursor = Signal(0)
-        self.rows_title = Signal(" résultats ")
+        self.rows_title = Signal(t("tui.list_title_padded"))
         self.empty_hint = Signal("")
         self.focus = Signal("search")
         self.dry_run = Signal(bool(dry_run))
@@ -358,6 +368,11 @@ class TuiApp:
         self.modal: Signal = Signal(None)
         self.toast: Signal = Signal(None)
         self.toast_level = Signal("info")
+        # menu paramètres : sélection, édition du chemin
+        self.settings_choice = 0
+        self.settings_editing = False
+        self.settings_draft = ""
+        self.settings_current = ""
         self.dims = Signal((80, 24))
 
         # générateurs / minuteries
@@ -377,6 +392,7 @@ class TuiApp:
 
         # rendu
         self._input: Input | None = None
+        self._settings_input: Input | None = None
         self._renderer: Any = None
 
     # ── boucle utilitaire ──────────────────────────────────────────────────
@@ -390,6 +406,9 @@ class TuiApp:
 
     def attach_input(self, value: Input) -> None:
         self._input = value
+
+    def attach_settings_input(self, value: Input) -> None:
+        self._settings_input = value
 
     def post(self, fn: Callable[[], None]) -> None:
         """Planifie ``fn`` sur le thread du rendu (frame suivante)."""
@@ -426,7 +445,7 @@ class TuiApp:
         age = index_age_days()
         if age is not None and age > INDEX_STALE_NOTIFY_DAYS:
             self.notify(
-                f"Index vieux de {age:.0f} j — Ctrl+R pour reconstruire", timeout=8
+                t("tui.stale", age=age), timeout=8
             )
         self.load_index_worker(refresh=self.refresh_on_start)
 
@@ -475,7 +494,7 @@ class TuiApp:
         self.index_failed.set(True)
         self.rev_bump()
         if reportable:
-            message = f"{message} — À signaler : {ISSUES_URL}"
+            message = f"{message}{t('tui.index_report', url=ISSUES_URL)}"
         self.notify(message, level="error")
 
     def _on_index_ready(self, pkg_index: PackageIndex) -> None:
@@ -494,7 +513,7 @@ class TuiApp:
         # Pas de pile-up : un rebuild déjà en cours ignore la demande (le
         # worker orphelin, lui, finit son nix-env sans appliquer le résultat).
         if self.loading.peek():
-            self.notify("Reconstruction déjà en cours…", timeout=2)
+            self.notify(t("tui.toast_rebuilding"), timeout=2)
             return
         self.load_index_worker(refresh=True)
 
@@ -586,7 +605,7 @@ class TuiApp:
                 self._fill_catalog()
                 return
             self.shown.set([])
-            self.rows_title.set(" résultats ")
+            self.rows_title.set(t("tui.list_title_padded"))
             self.empty_hint.set("")
             self.detail_state.set("idle")
             self.cursor.set(0)
@@ -595,7 +614,7 @@ class TuiApp:
 
         if len(q) < 2:
             self.shown.set([])
-            self.rows_title.set(" résultats ")
+            self.rows_title.set(t("tui.list_title_padded"))
             self.empty_hint.set("")
             self.detail_state.set("short")
             self.cursor.set(0)
@@ -612,10 +631,10 @@ class TuiApp:
         self.cursor.set(0)
         self.empty_hint.set("")
         if not visible:
-            self.rows_title.set(" résultats · 0 ")
+            self.rows_title.set(t("tui.list_title_zero"))
             self.detail_state.set("empty")
         else:
-            self.rows_title.set(f" résultats · {len(visible)} ")
+            self.rows_title.set(t("tui.list_title_count", n=len(visible)))
             self.detail_state.set("row")
         self.rev_bump()
 
@@ -728,8 +747,8 @@ class TuiApp:
     def action_toggle_hide_installed(self) -> None:
         self.hide_installed.set(not self.hide_installed.peek())
         self._rebuild_list()
-        state = "masqués" if self.hide_installed.peek() else "affichés"
-        self.notify(f"Paquets déjà installés {state}.", timeout=2)
+        state = t("tui.state_hidden") if self.hide_installed.peek() else t("tui.state_shown")
+        self.notify(t("tui.toast_hide", state=state), timeout=2)
 
     def action_toggle_catalog(self) -> None:
         enabled = not self.catalog.peek()
@@ -737,21 +756,15 @@ class TuiApp:
         if enabled:
             self.set_query("")
             self._fill_catalog()
-            self.notify(
-                "Catalogue packages.nix — x pour retirer, esc pour quitter le mode.",
-                timeout=3,
-            )
+            self.notify(t("tui.toast_catalog"), timeout=3)
         else:
             self._rebuild_list()
-            self.notify("Retour à la recherche nixpkgs.", timeout=2)
+            self.notify(t("tui.toast_back_search"), timeout=2)
 
     def action_toggle_dry_run(self) -> None:
         self.dry_run.set(not self.dry_run.peek())
         self.rev_bump()
-        self.notify(
-            "Simulation " + ("on" if self.dry_run.peek() else "off") + ".",
-            timeout=2,
-        )
+        self.notify(t("tui.toast_dry", onoff="on" if self.dry_run.peek() else "off"), timeout=2)
 
     def action_toggle_transparent(self) -> None:
         enabled = not self.transparent.peek()
@@ -759,14 +772,99 @@ class TuiApp:
         save_transparent_background(enabled)
         self.rev_bump()
         hint = (
-            "Fond transparent (ANSI). Kitty : background_opacity dans kitty.conf."
+            t("tui.toast_transparent")
             if enabled
-            else "Fond opaque (thème couleur)."
+            else t("tui.toast_opaque")
         )
         self.notify(hint, timeout=4)
 
     def action_help(self) -> None:
         self._open_modal({"kind": "help"})
+
+    def action_settings(self) -> None:
+        self.settings_choice = 0
+        self.settings_editing = False
+        self.settings_draft = ""
+        self._open_modal({"kind": "settings"})
+
+    def _settings_key(self, key: str, event: Any) -> None:
+        if self.settings_editing:
+            if key == "escape":
+                self.settings_editing = False
+                self.rev_bump()
+                return
+            if key in ("return", "enter"):
+                self._settings_validate_path()
+                return
+            inp = self._settings_input
+            editable = key in ("backspace", "delete", "left", "right", "home", "end") or (
+                len(key) == 1 and not getattr(event, "alt", False)
+            )
+            if inp is not None and editable and inp.handle_key(event):
+                self.settings_draft = inp.value
+                self.rev_bump()
+            return
+        if key == "escape":
+            self.resolve_modal(False)
+            return
+        if key in ("up", "k"):
+            self.settings_choice = (self.settings_choice - 1) % 3
+            self.rev_bump()
+            return
+        if key in ("down", "j", "tab"):
+            self.settings_choice = (self.settings_choice + 1) % 3
+            self.rev_bump()
+            return
+        if key in ("return", "enter"):
+            self._settings_activate()
+            return
+
+    def _settings_activate(self) -> None:
+        if self.settings_choice == 0:
+            self._settings_cycle_language()
+        elif self.settings_choice == 1:
+            self.action_toggle_transparent()
+        else:
+            try:
+                current = str(packages_file())
+            except ValueError:
+                current = ""
+            # Champ vide (la frappe remplace, au lieu de s'ajouter) ; le
+            # chemin actuel est mémorisé pour l'affichage ci-dessus.
+            self.settings_draft = ""
+            self.settings_current = current
+            if self._settings_input is not None:
+                self._settings_input.value = ""
+                self._settings_input.focused = True
+            self.settings_editing = True
+            self.rev_bump()
+
+    def _settings_cycle_language(self) -> None:
+        new = "en" if get_language() == "fr" else "fr"
+        try:
+            save_language(new)
+        except OSError as err:
+            self.notify(t("tui.settings_save_failed", err=err), level="error")
+            return
+        set_language(new)
+        self.rows_title.set(t("tui.list_title_padded"))
+        self._rebuild_list()
+        self.rev_bump()
+        self.notify(t("tui.settings_lang_set", lang=new), timeout=3)
+
+    def _settings_validate_path(self) -> None:
+        try:
+            saved = save_packages_file(self.settings_draft)
+        except ValueError as err:
+            self.notify(str(err), level="error", timeout=4)
+            return
+        self.settings_editing = False
+        if self._settings_input is not None:
+            self._settings_input.focused = False
+        self.installed = list_installed_attrs()
+        self._rebuild_list()
+        self.rev_bump()
+        self.notify(t("tui.settings_saved", path=saved), timeout=4)
 
     # ── modales ────────────────────────────────────────────────────────────
 
@@ -796,7 +894,7 @@ class TuiApp:
             return
         if row.attr not in self.installed:
             self.notify(
-                f"{row.attr} n'est pas dans packages.nix — rien à retirer.",
+                t("tui.toast_not_installed", attr=row.attr),
                 level="warning",
                 timeout=3,
             )
@@ -813,7 +911,7 @@ class TuiApp:
             return
         if row.attr in self.installed:
             self.notify(
-                "Déjà dans packages.nix — [x] pour retirer.",
+                t("tui.toast_already"),
                 level="warning",
                 timeout=3,
             )
@@ -826,12 +924,12 @@ class TuiApp:
 
     def _commit_add(self, plan: AddPlan, row: ResultRow | None) -> None:
         if self.dry_run.peek():
-            self.notify("Simulation : rien n'a été écrit.", timeout=3)
+            self.notify(t("tui.toast_dry_nothing"), timeout=3)
             return
         try:
             commit_add(plan, dry_run=False)
         except PermissionError:
-            self.notify(f"Pas les droits sur {plan.packages_file}.", level="error")
+            self.notify(t("tui.toast_no_rights", path=plan.packages_file), level="error")
             return
         except LookupError as err:
             self.installed = list_installed_attrs()
@@ -844,21 +942,21 @@ class TuiApp:
         self.installed = list_installed_attrs()
         self._rebuild_list()
         if is_nixos():
-            msg = f"Ajouté.  apply : {format_rebuild_command()}"
+            msg = t("tui.toast_added_rebuild", cmd=format_rebuild_command())
         else:
-            msg = "Ajouté.  → `nixpick sync` pour installer dans ton profil"
+            msg = t("tui.toast_added_sync")
         if plan.created_file:
-            msg = f"Fichier créé : {plan.packages_file}.  {msg}"
+            msg = t("tui.toast_created", path=plan.packages_file, msg=msg)
         self.notify(msg, timeout=6)
 
     def _commit_remove(self, plan: RemovePlan, row: ResultRow | None) -> None:
         if self.dry_run.peek():
-            self.notify("Simulation : rien n'a été écrit.", timeout=3)
+            self.notify(t("tui.toast_dry_nothing"), timeout=3)
             return
         try:
             commit_remove(plan, dry_run=False)
         except PermissionError:
-            self.notify(f"Pas les droits sur {plan.packages_file}.", level="error")
+            self.notify(t("tui.toast_no_rights", path=plan.packages_file), level="error")
             return
         except LookupError as err:
             self.notify(str(err), level="error")
@@ -869,7 +967,7 @@ class TuiApp:
         if row is not None:
             self.installed.discard(row.attr)
         self._rebuild_list()
-        self.notify(f"Retiré.  apply : {format_rebuild_command()}", timeout=6)
+        self.notify(t("tui.toast_removed", cmd=format_rebuild_command()), timeout=6)
 
     # ── notifications ──────────────────────────────────────────────────────
 
@@ -901,7 +999,7 @@ class TuiApp:
             # Modale ouverte sur terminal trop petit : seul esc annule.
             if self._too_small() and key != "escape":
                 return
-            self._modal_key(key)
+            self._modal_key(key, event)
             return
         if self._too_small() and not _safe_when_small(key, ctrl):
             return
@@ -935,11 +1033,14 @@ class TuiApp:
             return
         self._search_key(event, key)
 
-    def _modal_key(self, key: str) -> None:
+    def _modal_key(self, key: str, event: Any) -> None:
         payload = self.modal.peek() or {}
         if payload.get("kind") == "help":
             if key in ("escape", "q", "?", "question_mark", "f1", "n", "return", "enter"):
                 self.resolve_modal(False)
+            return
+        if payload.get("kind") == "settings":
+            self._settings_key(key, event)
             return
         if key in ("escape", "n"):
             self.resolve_modal(False)
@@ -961,6 +1062,7 @@ class TuiApp:
             "r": self.action_refresh_index,
             "u": self.action_clear_search,
             "x": self.action_remove,
+            "s": self.action_settings,
             "c": self.quit,
         }
         action = actions.get(key)
@@ -1006,29 +1108,35 @@ class TuiApp:
     def _colors() -> TuiColors:
         return get_color_palette().tui
 
+    def footer_region(self) -> list[Any]:
+        c = self._colors()
+        _ = self.rev()
+        width, _ = self.dims()
+        return [_footer_text(c, width - 2)]
+
     def chrome_region(self) -> list[Any]:
         c = self._colors()
         _ = self.rev()
         loading = self.loading()
         flags: list[str] = []
         if self.dry_run():
-            flags.append("simu")
+            flags.append(t("tui.flag_dry"))
         if self.transparent():
-            flags.append("transp.")
+            flags.append(t("tui.flag_transparent"))
         if self.hide_installed():
-            flags.append("sans installés")
+            flags.append(t("tui.flag_no_hidden"))
         if self.catalog():
-            flags.append("catalogue config")
+            flags.append(t("tui.flag_catalog"))
 
         index = self.pkg_index
         count_n = len(index) if index else 0
         count = (
-            f"{count_n // 1000}k paquets"
+            t("tui.count_k", n=count_n // 1000)
             if count_n >= 1000
-            else (f"{count_n} paquets" if count_n else "index…")
+            else (t("tui.count_n", n=count_n) if count_n else t("tui.count_loading"))
         )
         age = index_age_days()
-        age_s = f" · {age:.0f} j" if age is not None and not loading else ""
+        age_s = t("tui.age", age=age) if age is not None and not loading else ""
 
         parts: list[tuple[str, Any, bool]] = [
             ("nixpick", c.primary, True),
@@ -1045,7 +1153,7 @@ class TuiApp:
         width, _ = self.dims()
         list_w, _ = _split_widths(width)
         inner = max(12, list_w - 2)
-        title = self.rows_title().strip() or "résultats"
+        title = self.rows_title().strip() or t("tui.list_title")
         head = f" {title} "
         parts: list[tuple[str, Any, bool]] = [(head, c.text_muted, True)]
         pad = inner - display_width(head)
@@ -1059,20 +1167,20 @@ class TuiApp:
         _ = self.rev()
         width, _ = self.dims()
         if self.loading():
-            return self._hint_line(self.status() or "chargement de l'index…", c.warning, width)
+            return self._hint_line(self.status() or t("tui.loading"), c.warning, width)
         if self.index_failed():
             # Sans cette branche, on affichait « aucun résultat pour « x » » :
             # l'utilisateur croyait à une faute de frappe au lieu de réparer.
             return self._hint_line(
-                "index indisponible — Ctrl+R pour le reconstruire", c.danger, width
+                t("tui.hint_unavailable"), c.danger, width
             )
         query = self.query().strip()
         if query and len(query) < 2:
             return self._hint_line(
-                "tape encore 1 caractère pour lancer la recherche", c.text_muted, width
+                t("tui.hint_short"), c.text_muted, width
             )
         if query and not self.shown():
-            return self._hint_line(f"aucun résultat pour « {query} »", c.text_muted, width)
+            return self._hint_line(t("tui.hint_none", query=query), c.text_muted, width)
         hint = self.empty_hint()
         return self._hint_line(hint, c.text_muted, width)
 
@@ -1089,7 +1197,7 @@ class TuiApp:
         width, _ = self.dims()
         if self.query() or self.catalog() or self.loading():
             return []
-        return [_line(_ellipsis(f"essaie : {_SUGGESTIONS}", max(8, width - 6)), c.text_muted)]
+        return [_line(_ellipsis(t("tui.suggest", items=_SUGGESTIONS), max(8, width - 6)), c.text_muted)]
 
     def rows_region(self) -> list[Any]:
         c = self._colors()
@@ -1150,19 +1258,13 @@ class TuiApp:
 
         if state == "short":
             name, meta = "…", ""
-            body = (
-                "Au moins 2 caractères pour lancer la recherche "
-                "(évite de scanner tout nixpkgs)."
-            )
+            body = t("tui.detail_short_body")
         elif state == "empty":
-            name, meta = "rien trouvé", ""
-            body = "Essaie un mot plus court, ou Ctrl+R pour rafraîchir l'index."
+            name, meta = t("tui.detail_empty_name"), ""
+            body = t("tui.detail_empty_body")
         else:
             name, meta = "nixpick", "nixpkgs → packages.nix"
-            body = (
-                "Tape un nom d'application.\n"
-                "↑↓ pour parcourir · ↵ pour ajouter · ? pour l'aide"
-            )
+            body = t("tui.detail_idle_body")
 
         return [
             _line(name, c.primary, bold=True),
@@ -1198,20 +1300,20 @@ class TuiApp:
 
     def _detail_for_row(self, row: ResultRow, c: TuiColors) -> list[Any]:
         installed = row.attr in self.installed
-        meta = row.version + ("  ·  déjà dans la config" if installed else "")
+        meta = row.version + (t("tui.detail_meta_installed") if installed else "")
         cached = row.description or self.desc_cache.get(row.attr) or ""
         if cached:
             row.description = cached
-        body = cached if cached else "description…"
+        body = cached if cached else t("tui.detail_desc_missing")
 
         if installed:
-            hint_text = "déjà dans packages.nix   ·  ctrl+x retirer  ·  ↵ n'ajoute pas"
+            hint_text = t("tui.detail_hint_installed")
             hint_color = c.warning
         elif self.dry_run():
-            hint_text = "↵  simuler l'ajout (rien ne sera écrit)"
+            hint_text = t("tui.detail_hint_dry")
             hint_color = c.warning
         else:
-            hint_text = "↵  ajouter à packages.nix"
+            hint_text = t("tui.detail_hint_add")
             hint_color = c.success
 
         inner = max(1, _split_widths(self.dims()[0])[1] - 4)
@@ -1220,7 +1322,7 @@ class TuiApp:
             _line(_ellipsis(row.attr, inner), c.primary, bold=True),
             _line(_ellipsis(meta, inner), c.text_muted),
             _line(""),
-            *self._detail_body(body if body else "description…", c),
+            *self._detail_body(body if body else t("tui.detail_desc_missing"), c),
             _line(""),
             _line(_ellipsis(hint_text, inner), hint_color),
         ]
@@ -1258,8 +1360,12 @@ class TuiApp:
             return []
         c = self._colors()
         message = _ellipsis(
-            f"terminal {width}×{height} : {_MIN_UI_WIDTH}×{_MIN_UI_HEIGHT} requis — "
-            "agrandir la fenêtre pour continuer",
+            t(
+                "tui.too_small",
+                w=width,
+                h=height,
+                req=f"{_MIN_UI_WIDTH}×{_MIN_UI_HEIGHT}",
+            ),
             max(20, width - 4),
         )
         return [
@@ -1284,12 +1390,15 @@ class TuiApp:
 
     def modal_region(self) -> list[Any]:
         payload = self.modal()
+        _ = self.rev()
         if payload is None:
             return []
         c = self._colors()
         width, height = self.dims()
         if payload.get("kind") == "help":
             inner = self._help_box(c, width, height)
+        elif payload.get("kind") == "settings":
+            inner = self._settings_box(c, width, height)
         else:
             inner = self._confirm_box(payload, c, width, height)
         return [
@@ -1321,7 +1430,7 @@ class TuiApp:
             visible = lines[: capacity - 1]
             hidden = len(lines) - len(visible)
             visible.append(
-                _line(f"… +{hidden} lignes (README § TUI — raccourcis)", c.text_muted)
+                _line(t("tui.help_more", n=hidden), c.text_muted)
             )
             lines = visible
         box_height = len(lines) + 4
@@ -1339,21 +1448,84 @@ class TuiApp:
             flex_shrink=1,
         )
 
+    def _settings_box(self, c: TuiColors, width: int, height: int) -> Box:
+        box_width = min(78, max(44, width - 4))
+        lang_value = "français" if get_language() == "fr" else "English"
+        transp_value = (
+            t("tui.settings_on") if self.transparent.peek() else t("tui.settings_off")
+        )
+        try:
+            current_path = str(packages_file())
+        except ValueError:
+            current_path = ""
+        rows = [
+            (t("tui.settings_lang"), lang_value),
+            (t("tui.settings_transparent"), transp_value),
+            (t("tui.settings_file"), current_path),
+        ]
+        children: list[Any] = [
+            _line(t("tui.settings_title"), c.primary, bold=True),
+            _line(""),
+        ]
+        for index, (label, value) in enumerate(rows):
+            selected = index == self.settings_choice and not self.settings_editing
+            children.append(
+                _row(
+                    ("> " if selected else "  ", c.accent if selected else c.text_muted, selected),
+                    (label, c.text if selected else c.text_muted, selected),
+                    background_color=c.list_highlight_bg if selected else None,
+                )
+            )
+            if index == 2 and self.settings_editing:
+                children.append(
+                    _row(
+                        (f"    {_ellipsis(self.settings_current, max(8, box_width - 10))}", c.text_muted, False),
+                    )
+                )
+                if self._settings_input is not None:
+                    children.append(self._settings_input)
+            else:
+                children.append(
+                    _row(
+                        (f"    {_ellipsis(value, max(8, box_width - 10))}", c.text_muted, False),
+                    )
+                )
+        children.append(_line(""))
+        children.append(
+            _line(
+                t("tui.settings_edit_hint") if self.settings_editing else t("tui.settings_hint"),
+                c.text_muted,
+            )
+        )
+        return Box(
+            *children,
+            width=box_width,
+            background_color=c.surface_elevated,
+            border=True,
+            border_style="single",
+            border_color=c.text_muted,
+            padding_x=2,
+            padding_y=1,
+            max_height=max(10, height - 2),
+            overflow="hidden",
+            flex_shrink=1,
+        )
+
     def _confirm_box(
         self, payload: dict[str, Any], c: TuiColors, width: int, height: int
     ) -> Box:
         plan = payload["plan"]
         removing = payload.get("kind") == "remove"
-        title = "Retirer de la config" if removing else "Confirmer l'ajout"
+        title = t("tui.confirm_remove_title") if removing else t("tui.confirm_add_title")
         title_color = c.danger if removing else c.text
         dry = self.dry_run.peek()
         mode = (
-            "simulation — le fichier ne sera pas modifié"
+            t("tui.confirm_dry")
             if dry
             else (
-                "suppression dans environment.systemPackages"
+                t("tui.confirm_remove_mode")
                 if removing
-                else "écriture dans environment.systemPackages"
+                else t("tui.confirm_add_mode")
             )
         )
 
@@ -1380,7 +1552,7 @@ class TuiApp:
         children.append(
             Box(
                 *diff,
-                title=" aperçu ",
+                title=t("tui.preview_title"),
                 border=True,
                 border_style="single",
                 border_color=c.danger if removing else c.text_muted,
@@ -1395,13 +1567,13 @@ class TuiApp:
         children.append(
             _row(
                 ("y", c.success, True),
-                (" ou ", c.text_muted, False),
+                (t("tui.confirm_or"), c.text_muted, False),
                 ("↵", c.success, True),
-                ("  confirmer     ", c.text_muted, False),
+                (f"  {t('tui.confirm_yes')}     ", c.text_muted, False),
                 ("n", c.danger, True),
-                (" ou ", c.text_muted, False),
+                (t("tui.confirm_or"), c.text_muted, False),
                 ("esc", c.danger, True),
-                ("  annuler", c.text_muted, False),
+                (f"  {t('tui.confirm_no')}", c.text_muted, False),
             )
         )
 
@@ -1450,7 +1622,7 @@ def _make_app(app: TuiApp) -> Any:
 
         search_input = Input(
             value=app.query.peek(),
-            placeholder="chercher un paquet…",
+            placeholder=t("tui.search_placeholder"),
             focused=True,
             height=1,
             flex_grow=1,
@@ -1458,6 +1630,16 @@ def _make_app(app: TuiApp) -> Any:
             cursor_color=c.primary,
         )
         app.attach_input(search_input)
+        settings_input = Input(
+            value="",
+            placeholder="",
+            focused=False,
+            height=1,
+            flex_grow=1,
+            fg=c.text,
+            cursor_color=c.primary,
+        )
+        app.attach_settings_input(settings_input)
         app.start()
 
         return Box(
@@ -1534,7 +1716,7 @@ def _make_app(app: TuiApp) -> Any:
                 ),
                 Box(
                     Dynamic(render=app.detail_region, flex_direction="column"),
-                    title=" détail ",
+                    title=t("tui.detail_title"),
                     border=True,
                     border_style="single",
                     border_color=c.detail_title,
@@ -1569,7 +1751,7 @@ def _make_app(app: TuiApp) -> Any:
             # ── footer responsive centré
             Box(
                 Dynamic(
-                    render=lambda: [_footer_text(c, app.dims()[0] - 2)],
+                    render=app.footer_region,
                     flex_direction="row",
                     justify_content="center",
                 ),

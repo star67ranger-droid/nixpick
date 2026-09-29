@@ -21,6 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from config import get_settings, is_nixos
+from i18n import t
 
 
 def packages_file() -> Path:
@@ -60,11 +61,9 @@ def run(cmd: list[str], timeout: int) -> str:
             cmd, capture_output=True, text=True, timeout=timeout, check=True
         ).stdout
     except FileNotFoundError:
-        raise NixCommandError(
-            f"{cmd[0]} est introuvable. Installe Nix (voir README § Hors NixOS)."
-        )
+        raise NixCommandError(t("eng.nix_missing", cmd=cmd[0]))
     except subprocess.TimeoutExpired:
-        raise NixCommandError(f"{cmd[0]} a dépassé {timeout} s.")
+        raise NixCommandError(t("eng.timeout", cmd=cmd[0], timeout=timeout))
     except subprocess.CalledProcessError as err:
         raise NixCommandError((err.stderr or err.stdout or "").strip()[:400])
 
@@ -124,7 +123,7 @@ def _index_build_lock() -> Iterator[None]:
 def build_index(on_status: StatusCallback | None = None) -> dict:
     with _index_build_lock():
         if on_status:
-            on_status("Construction de l'index nixpkgs (~20 s)…")
+            on_status(t("eng.build_start"))
         raw = run(["nix-env", "-qaP", "--json"], timeout=600)
         data = json.loads(raw)
         slim = {
@@ -134,7 +133,7 @@ def build_index(on_status: StatusCallback | None = None) -> dict:
         _atomic_write_json(INDEX_FILE, slim)
         _write_index_meta()
         if on_status:
-            on_status(f"{len(slim)} paquets indexés.")
+            on_status(t("eng.build_done", n=len(slim)))
     return slim
 
 
@@ -144,13 +143,13 @@ def load_index(refresh: bool = False, on_status: StatusCallback | None = None) -
         return build_index(on_status)
     if age > INDEX_MAX_AGE_DAYS:
         if on_status:
-            on_status(f"Index vieux de {age:.0f} jours, reconstruction…")
+            on_status(t("eng.stale_rebuild", age=age))
         return build_index(on_status)
     try:
         return json.loads(INDEX_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as err:
         if on_status:
-            on_status(f"Index illisible ({err}), reconstruction…")
+            on_status(t("eng.unreadable", err=err))
         return build_index(on_status)
 
 
@@ -418,7 +417,7 @@ def already_listed(lines: list[str], attr: str) -> bool:
 def _read_packages_lines() -> list[str] | AddFailure:
     path = packages_file()
     if not path.exists():
-        return AddFailure(AddOutcome.FILE_MISSING, f"{path} introuvable.")
+        return AddFailure(AddOutcome.FILE_MISSING, t("eng.file_missing", path=path))
     return path.read_text(encoding="utf-8").splitlines(keepends=True)
 
 
@@ -456,7 +455,7 @@ def _create_packages_skeleton() -> AddFailure | None:
         path.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write_text(path, _packages_skeleton())
     except OSError as err:
-        return AddFailure(AddOutcome.FILE_MISSING, f"{path} introuvable ({err}).")
+        return AddFailure(AddOutcome.FILE_MISSING, t("eng.file_missing_why", path=path, err=err))
     return None
 
 
@@ -552,7 +551,7 @@ def _short_description(description: str, max_len: int = 55) -> str:
 
 def _validate_attr_name(attr: str) -> str | None:
     if not attr or not ATTR_NAME_RE.fullmatch(attr):
-        return f"Nom d'attribut invalide : {attr!r}"
+        return t("eng.invalid_attr", attr=attr)
     return None
 
 
@@ -684,39 +683,36 @@ def undo_last_write() -> UndoResult:
     """Restaure packages_file depuis la dernière sauvegarde (sans rebuild)."""
     record = _load_last_op()
     if not record:
-        return UndoResult(1, stderr="Aucune dernière opération enregistrée.")
+        return UndoResult(1, stderr=t("eng.undo_none"))
 
     op = record.get("op")
     attr = record.get("attr", "")
     if op not in ("add", "remove"):
-        return UndoResult(1, stderr="Dernière opération invalide ou illisible.")
+        return UndoResult(1, stderr=t("eng.undo_invalid"))
 
     target = packages_file()
     recorded_target = record.get("packages_file")
     if not recorded_target:
-        return UndoResult(1, stderr="Dernière opération invalide ou illisible.")
+        return UndoResult(1, stderr=t("eng.undo_invalid"))
     try:
         if Path(recorded_target).resolve() != target.resolve():
             return UndoResult(
                 1,
-                stderr=(
-                    f"La dernière opération concerne un autre fichier "
-                    f"({recorded_target}), pas {target}."
-                ),
+                stderr=t("eng.undo_other_file", recorded=recorded_target, target=target),
             )
     except OSError:
-        return UndoResult(1, stderr="Chemin de la dernière opération invalide.")
+        return UndoResult(1, stderr=t("eng.undo_bad_path"))
 
     backup_raw = record.get("backup_path")
     if not backup_raw:
-        return UndoResult(1, stderr="Dernière opération sans sauvegarde associée.")
+        return UndoResult(1, stderr=t("eng.undo_no_backup"))
     backup_path = Path(backup_raw)
     if not backup_path.is_file():
-        return UndoResult(1, stderr=f"Sauvegarde introuvable : {backup_path}")
+        return UndoResult(1, stderr=t("eng.undo_backup_missing", path=backup_path))
     if not _backup_matches_target(backup_path, target):
         return UndoResult(
             1,
-            stderr=f"La sauvegarde ne correspond pas au fichier cible {target}.",
+            stderr=t("eng.undo_backup_mismatch", target=target),
         )
 
     try:
@@ -724,23 +720,20 @@ def undo_last_write() -> UndoResult:
             _atomic_write_text(target, backup_path.read_text(encoding="utf-8"))
     except PermissionError:
         return UndoResult(
-            1, stderr=f"Pas les droits d'écriture sur {target}."
+            1, stderr=t("eng.undo_no_rights", target=target)
         )
     except OSError as err:
-        return UndoResult(1, stderr=f"Restauration impossible : {err}")
+        return UndoResult(1, stderr=t("eng.undo_impossible", err=err))
 
     try:
         LAST_OP_FILE.unlink(missing_ok=True)
     except OSError:
         pass
 
-    verb = "ajout" if op == "add" else "retrait"
+    verb = t("eng.undo_add") if op == "add" else t("eng.undo_remove")
     return UndoResult(
         0,
-        stdout=(
-            f"Fichier restauré : {target} "
-            f"(annulation du {verb} de {attr})."
-        ),
+        stdout=t("eng.undo_done", target=target, verb=verb, attr=attr),
     )
 
 
@@ -779,9 +772,9 @@ def _ensure_valid_packages_file(path: Path, backup: Path) -> None:
     except (OSError, UnicodeDecodeError) as restore_err:
         restored = False
         detail = f" Restauration impossible : {restore_err}."
-    state = "restauré depuis la sauvegarde" if restored else "NON restauré"
+    state = t("eng.restored") if restored else t("eng.not_restored")
     raise NixSyntaxError(
-        f"{path} invalide après modification ({state}).{detail} Détail : {err}"
+        t("eng.invalid_after_modify", path=path, state=state, detail=detail, err=err)
     )
 
 
@@ -859,7 +852,7 @@ def plan_add(attr: str, description: str) -> AddPlan | AddFailure:
     if already_listed(lines, attr):
         return AddFailure(
             AddOutcome.ALREADY_LISTED,
-            f"{attr} est déjà dans environment.systemPackages.",
+            t("eng.already_listed", attr=attr),
         )
 
     try:
@@ -892,7 +885,7 @@ def commit_add(plan: AddPlan, dry_run: bool = False) -> None:
         path = packages_file()
         lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
         if already_listed(lines, plan.attr):
-            raise LookupError(f"{plan.attr} est déjà listé.")
+            raise LookupError(t("eng.already_listed_commit", attr=plan.attr))
         insert_at, _ = _find_insertion_point(lines)
         shutil.copy2(path, plan.backup_path)
         lines.insert(insert_at, plan.new_line)
@@ -906,12 +899,9 @@ def _find_insertion_point(lines: list[str]) -> tuple[int, str]:
     anchor = packages_anchor()
     start, end = _find_package_block(lines)
     if start is None:
-        raise LookupError(
-            f"Bloc « {anchor} » absent, multiple ou dans une forme non prise en charge. "
-            "Format attendu : anchor = with pkgs; [ … ];"
-        )
+        raise LookupError(t("eng.block_missing", anchor=anchor))
     if end is None:
-        raise LookupError(f"Fin du bloc « {anchor} » introuvable ou bloc Nix non équilibré.")
+        raise LookupError(t("eng.block_unbalanced", anchor=anchor))
 
     indent = "  "
     for line in lines[start + 1 : end]:
@@ -992,7 +982,7 @@ def commit_remove(plan: RemovePlan, dry_run: bool = False) -> None:
         lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
         line_idx = find_package_line_index(lines, plan.attr)
         if line_idx is None:
-            raise LookupError(f"Ligne introuvable pour {plan.attr}")
+            raise LookupError(t("eng.line_missing", attr=plan.attr))
 
         shutil.copy2(path, plan.backup_path)
         del lines[line_idx]

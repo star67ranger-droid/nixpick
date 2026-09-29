@@ -6,17 +6,38 @@ from pathlib import Path
 
 from config import format_rebuild_command, is_nixos
 from engine import AddFailure, RemoveFailure
+from i18n import t
 
-ROFI_CONFIRM_ADD = "Confirmer l'ajout"
-ROFI_CONFIRM_REMOVE = "Confirmer le retrait"
-ROFI_CANCEL = "Annuler"
-ROFI_REBUILD_NOW = "󰐊 Lancer le rebuild"
-ROFI_REBUILD_LATER = "Plus tard"
-ROFI_FIX_GIT = "󰊢 Corriger Git (fix-git)"
+
+def rofi_confirm_add() -> str:
+    return t("rofi.confirm_add")
+
+
+def rofi_confirm_remove() -> str:
+    return t("rofi.confirm_remove")
+
+
+def rofi_cancel() -> str:
+    return t("rofi.cancel")
+
+
+def rofi_rebuild_now() -> str:
+    return t("rofi.rebuild_now")
+
+
+def rofi_rebuild_later() -> str:
+    return t("rofi.rebuild_later")
+
+
+def rofi_fix_git() -> str:
+    return t("rofi.fix_git")
+
+
+def rofi_sync_now() -> str:
+    return t("rofi.sync_now")
 
 
 ISSUES_URL = "https://github.com/star67ranger-droid/nixpick/issues"
-ROFI_SYNC_NOW = "Installer via sync"
 
 
 def is_affirmative(answer: str) -> bool:
@@ -25,7 +46,7 @@ def is_affirmative(answer: str) -> bool:
 
 
 def cli_cancelled() -> str:
-    return "Abandonné."
+    return t("cli.cancelled")
 
 
 def apply_hint() -> str:
@@ -34,16 +55,16 @@ def apply_hint() -> str:
 
 
 def cli_success_lines(backup_path: Path) -> list[str]:
-    lines = [f"Sauvegarde : {backup_path}", ""]
+    lines = [t("cli.saved", path=backup_path), ""]
     if is_nixos():
         lines += [
-            "Pour appliquer : nixpick rebuild",
+            t("cli.apply_rebuild"),
             f"  ({format_rebuild_command()})",
         ]
     else:
         lines += [
-            "Pour installer : nixpick sync",
-            "  (nix profile install nixpkgs#… des listés)",
+            t("cli.apply_sync"),
+            t("cli.apply_sync_detail"),
         ]
     return lines
 
@@ -57,28 +78,28 @@ def diff_preview_text(context_lines: list[str], packages_file: Path) -> str:
 
 def rofi_confirm_choices(*, remove: bool) -> list[str]:
     if remove:
-        return [ROFI_CONFIRM_REMOVE, ROFI_CANCEL]
-    return [ROFI_CONFIRM_ADD, ROFI_CANCEL]
+        return [rofi_confirm_remove(), rofi_cancel()]
+    return [rofi_confirm_add(), rofi_cancel()]
 
 
 def notify_search_too_short() -> tuple[str, str]:
     return (
         "nixpick",
-        "Tape au moins 2 caractères.\nEssaie un nom de paquet ou d'attribut nixpkgs.",
+        t("rofi.search_too_short"),
     )
 
 
 def notify_index_error(detail: str) -> tuple[str, str]:
     return (
-        "nixpick — index",
-        f"{detail}\nReconstruis l'index : nixpick --build-index-only",
+        t("rofi.index_title"),
+        t("rofi.index_error", detail=detail),
     )
 
 
 def notify_not_found(term: str) -> tuple[str, str]:
     return (
         "nixpick",
-        f"Rien trouvé pour « {term} ».\nEssaie un autre terme ou vérifie l'orthographe.",
+        t("rofi.not_found", term=term),
     )
 
 
@@ -93,44 +114,41 @@ def notify_add_failure(plan: AddFailure) -> tuple[str, str]:
 def notify_permission_denied(packages_file: Path) -> tuple[str, str]:
     return (
         "nixpick",
-        (
-            f"Pas les droits d'écriture sur {packages_file}.\n"
-            "Vérifie les permissions ou adapte NIXPICK_PACKAGES_FILE."
-        ),
+        t("rofi.permission_denied", path=packages_file),
     )
 
 
 def notify_dry_run_remove(attr: str) -> tuple[str, str]:
     return (
-        "nixpick (dry-run)",
-        f"{attr} aurait été retiré — aucune modification sur le disque.",
+        t("rofi.dry_run_title"),
+        t("rofi.dry_run_remove", attr=attr),
     )
 
 
 def notify_dry_run_add(attr: str) -> tuple[str, str]:
     return (
-        "nixpick (dry-run)",
-        f"{attr} aurait été ajouté — aucune modification sur le disque.",
+        t("rofi.dry_run_title"),
+        t("rofi.dry_run_add", attr=attr),
     )
 
 
 def rofi_rebuild_choices(*, git_ok: bool = True) -> list[str]:
     if not git_ok:
-        return [ROFI_FIX_GIT, ROFI_REBUILD_NOW, ROFI_REBUILD_LATER]
-    return [ROFI_REBUILD_NOW, ROFI_REBUILD_LATER]
+        return [rofi_fix_git(), rofi_rebuild_now(), rofi_rebuild_later()]
+    return [rofi_rebuild_now(), rofi_rebuild_later()]
 
 
 def _success_body(backup_path: Path) -> str:
     if is_nixos():
-        how = f"Applique avec : nixpick rebuild\n({format_rebuild_command()})"
+        how = t("cli.success_rebuild", cmd=format_rebuild_command())
     else:
-        how = "Installe avec : nixpick sync"
-    return f"Sauvegarde : {backup_path}\n{how}"
+        how = t("cli.success_sync")
+    return t("cli.saved_body", path=backup_path, how=how)
 
 
 def notify_success_remove(attr: str, backup_path: Path) -> tuple[str, str]:
-    return (f"nixpick · {attr} retiré", _success_body(backup_path))
+    return (t("rofi.removed_title", attr=attr), _success_body(backup_path))
 
 
 def notify_success_add(attr: str, backup_path: Path) -> tuple[str, str]:
-    return (f"nixpick · {attr} ajouté", _success_body(backup_path))
+    return (t("rofi.added_title", attr=attr), _success_body(backup_path))

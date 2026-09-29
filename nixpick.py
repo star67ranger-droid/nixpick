@@ -19,7 +19,7 @@ import sys
 import traceback
 
 from cli import run_cli, run_cli_remove
-from config import __version__, get_settings
+from config import __version__, get_settings, resolve_language
 from doctor import run_doctor, run_why
 from engine import (
     NixCommandError,
@@ -29,7 +29,9 @@ from engine import (
     packages_file,
     undo_last_write,
 )
+from errors import explain_error
 from fix_git_runner import run_fix_git
+from i18n import set_language, t
 from messages import ISSUES_URL
 from rebuild_runner import run_rebuild
 from rofi_mode import run_rofi
@@ -43,18 +45,22 @@ def main() -> int:
     try:
         return _run()
     except KeyboardInterrupt:
-        print("Interrompu.", file=sys.stderr)
+        print(t("app.interrupted"), file=sys.stderr)
         return 130
-    except Exception:  # noqa: BLE001 — garde-fou : toute erreur inattendue est signalée
+    except Exception as err:  # noqa: BLE001 — garde-fou : toute erreur inattendue est signalée
         traceback.print_exc()
-        print(f"\nSignale ce bug : {ISSUES_URL}", file=sys.stderr)
+        advice = explain_error(err)
+        if advice:
+            print(advice, file=sys.stderr)
+        print(t("app.report_bug", url=ISSUES_URL), file=sys.stderr)
         return 1
 
 
 def _run() -> int:
+    set_language(resolve_language())
     parser = argparse.ArgumentParser(
         prog="nixpick",
-        description="Cherche un paquet nixpkgs et modifie environment.systemPackages.",
+        description=t("app.desc"),
     )
     parser.add_argument(
         "--version",
@@ -64,132 +70,132 @@ def _run() -> int:
     subparsers = parser.add_subparsers(dest="command")
     doctor_parser = subparsers.add_parser(
         "doctor",
-        help="vérifie config, cache, outils, Git flake et flake.lock (nix/git en lecture)",
+        help=t("app.help_doctor"),
     )
     doctor_parser.add_argument(
         "--json",
         action="store_true",
-        help="sortie JSON (checks structurés)",
+        help=t("app.help_doctor_json"),
     )
     rebuild_parser = subparsers.add_parser(
         "rebuild",
-        help="lance la commande rebuild configurée (confirmée)",
+        help=t("app.help_rebuild"),
     )
     rebuild_parser.add_argument(
         "-y",
         "--yes",
         action="store_true",
-        help="sans demander confirmation (utile en script)",
+        help=t("app.help_yes_script"),
     )
     rebuild_parser.add_argument(
         "--terminal",
         action="store_true",
-        help="ouvre un émulateur (kitty, foot…) pour sudo / la sortie",
+        help=t("app.help_terminal"),
     )
     rebuild_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="affiche la commande rebuild sans l'exécuter",
+        help=t("app.help_dry_run"),
     )
     fix_git_parser = subparsers.add_parser(
         "fix-git",
-        help="git add les fichiers non suivis (??) du dépôt flake NixOS",
+        help=t("app.help_fix_git"),
     )
     fix_git_parser.add_argument(
         "-y",
         "--yes",
         action="store_true",
-        help="sans demander confirmation",
+        help=t("app.help_yes"),
     )
     fix_git_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="affiche la commande git sans l'exécuter",
+        help=t("app.help_fix_git_dry"),
     )
     sync_parser = subparsers.add_parser(
         "sync",
-        help="installe dans le profil Nix les paquets listés mais absents (hors NixOS)",
+        help=t("app.help_sync"),
     )
     sync_parser.add_argument(
         "-y",
         "--yes",
         action="store_true",
-        help="sans demander confirmation",
+        help=t("app.help_yes"),
     )
     sync_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="affiche la commande nix sans l'exécuter",
+        help=t("app.help_sync_dry"),
     )
     parser.add_argument(
         "--print-config",
         action="store_true",
-        help="affiche le fichier cible et la commande rebuild puis quitte",
+        help=t("app.help_print_config"),
     )
     parser.add_argument(
         "term",
         nargs="?",
-        help="recherche en mode CLI (sinon ouvre la TUI)",
+        help=t("app.help_term"),
     )
     parser.add_argument(
         "--refresh",
         action="store_true",
-        help="reconstruit l'index nixpkgs au démarrage",
+        help=t("app.help_refresh"),
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="simulation : n'écrit pas dans packages.nix",
+        help=t("app.help_dryrun"),
     )
     parser.add_argument(
         "--transparent",
         action="store_true",
-        help="TUI : fond transparent (comme superfile)",
+        help=t("app.help_transparent"),
     )
     parser.add_argument(
         "--opaque",
         action="store_true",
-        help="TUI : fond opaque (ignore la config)",
+        help=t("app.help_opaque"),
     )
     parser.add_argument(
         "--tui",
         action="store_true",
-        help="force la TUI même si un terme est passé",
+        help=t("app.help_tui"),
     )
     parser.add_argument(
         "--rofi",
         action="store_true",
-        help="lance la recherche via Rofi (barre glass)",
+        help=t("app.help_rofi"),
     )
     parser.add_argument(
         "--build-index-only",
         action="store_true",
-        help="reconstruit l'index puis quitte (sans TUI)",
+        help=t("app.help_build_index"),
     )
     parser.add_argument(
         "--remove",
         action="store_true",
-        help="retire un paquet de environment.systemPackages (avec le terme CLI)",
+        help=t("app.help_remove"),
     )
     parser.add_argument(
         "--list-installed",
         action="store_true",
-        help="liste les attributs déjà présents dans environment.systemPackages",
+        help=t("app.help_list"),
     )
     parser.add_argument(
         "--json",
         action="store_true",
-        help="avec --list-installed : une ligne JSON (attrs, count, packages_file, index_age_days)",
+        help=t("app.help_list_json"),
     )
     parser.add_argument(
         "--undo",
         action="store_true",
-        help="restaure packages.nix depuis la dernière sauvegarde (sans rebuild)",
+        help=t("app.help_undo"),
     )
     parser.add_argument(
         "--why",
         metavar="ATTR",
-        help="indique si un attribut est dans le fichier packages configuré",
+        help=t("app.help_why"),
     )
     args = parser.parse_args()
 
@@ -198,7 +204,7 @@ def _run() -> int:
     try:
         get_settings()
     except ValueError as err:
-        print(f"nixpick : {err}", file=sys.stderr)
+        print(t("app.error", err=err), file=sys.stderr)
         return 1
 
     if args.command == "doctor":
@@ -259,7 +265,10 @@ def _run() -> int:
         try:
             build_index(on_status=lambda m: print(m, file=sys.stderr))
         except NixCommandError as err:
-            print(f"nixpick : {err}", file=sys.stderr)
+            print(t("app.error", err=err), file=sys.stderr)
+            advice = explain_error(err)
+            if advice:
+                print(advice, file=sys.stderr)
             return 1
         return 0
 
@@ -268,8 +277,7 @@ def _run() -> int:
 
     if args.remove and not args.term:
         print(
-            "nixpick : --remove exige un terme "
-            "(ex. nixpick --remove firefox).",
+            t("app.remove_needs_term"),
             file=sys.stderr,
         )
         return 2

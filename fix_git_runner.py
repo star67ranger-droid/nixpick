@@ -13,17 +13,18 @@ from flake_git import (
     untracked_git_add_target,
 )
 from flake_lock import nixos_flake_root
+from i18n import t
 from messages import is_affirmative
 
 
 def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
     flake_root = nixos_flake_root()
     if flake_root is None:
-        print("Pas de flake NixOS détecté (packages_file hors arbre flake).", file=sys.stderr)
+        print(t("git.no_flake"), file=sys.stderr)
         return 1
 
     if git_top_for_flake(flake_root) is None:
-        print(f"{flake_root} : pas de dépôt git — fix-git impossible.", file=sys.stderr)
+        print(t("git.no_repo", root=flake_root), file=sys.stderr)
         return 1
 
     paths, err = list_untracked_paths(flake_root)
@@ -47,23 +48,21 @@ def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
 
     # Inventaire toujours affiché — y compris avec -y : on ne devine jamais
     # ce qui va être ajouté au dépôt.
-    print(f"Fichiers non suivi(s) à ajouter à {git_top} ({len(paths)}) :")
+    print(t("git.inventory", top=git_top, n=len(paths)))
     for p in shown:
         print(f"  • {p}")
     if extra > 0:
-        print(f"  … et {extra} autre(s).")
+        print(t("git.inventory_more", n=extra))
 
     if not yes:
         if not sys.stdin.isatty():
             print(
-                "fix-git non lancé : pas de terminal interactif.\n"
-                f"  {format_git_add_command(git_top, paths)}\n"
-                "Utilise : nixpick fix-git --yes",
+                t("git.no_tty", cmd=format_git_add_command(git_top, paths)),
                 file=sys.stderr,
             )
             return 1
         try:
-            answer = input(f"Ajouter ces {len(paths)} fichier(s) ? [o/N] ").strip().lower()
+            answer = input(t("git.confirm", n=len(paths))).strip().lower()
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
             return 1
@@ -72,9 +71,9 @@ def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
 
     code = git_add_untracked(git_top, paths)
     if code != 0:
-        print(f"git add a quitté avec le code {code}.", file=sys.stderr)
+        print(t("git.exit_code", code=code), file=sys.stderr)
         return code
 
-    print(f"{len(paths)} fichier(s) ajoutés au suivi git.")
-    print("Étape suivante : git commit (si tu veux versionner), puis nixpick rebuild")
+    print(t("git.added", n=len(paths)))
+    print(t("git.next"))
     return 0

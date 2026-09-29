@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from engine import packages_file
+from i18n import t
 
 # Contenu volatile : modifié par git/pytest sans changement de sources.
 _VOLATILE_TOP = {
@@ -116,38 +117,33 @@ def check_nixpick_flake_lock() -> tuple[bool, str]:
     """
     root = nixos_flake_root()
     if root is None:
-        return True, "Pas de flake NixOS détecté à côté de packages_file (check ignoré)."
+        return True, t("lock.no_root"),
 
     lock_path = root / "flake.lock"
     try:
         data = json.loads(lock_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as err:
-        return True, f"flake.lock illisible ({err}) — check ignoré."
+        return True, t("lock.unreadable", err=err),
 
     locked = _locked_nixpick_path(data)
     if locked is None:
-        return True, "Aucun input path « nixpick » dans flake.lock (check ignoré)."
+        return True, t("lock.no_input"),
 
     nixpick_path, locked_hash = locked
     if not nixpick_path.is_dir():
         return (
             False,
-            (
-                f"Input nixpick pointe vers {nixpick_path} (absent). "
-                f"Corrige flake.nix ou le chemin."
-            ),
+            t("lock.points_missing", path=nixpick_path),
         )
 
     current = _path_nar_hash(nixpick_path)
     if current is None:
-        return True, "Impossible de calculer le hash nix du dépôt nixpick (nix absent ?)."
+        return True, t("lock.hash_impossible"),
 
     if current == locked_hash:
         return (
             True,
-            (
-                f"flake.lock cohérent avec {nixpick_path.name} ({current[:20]}…)."
-            ),
+            t("lock.coherent", name=nixpick_path.name, short=current[:20]),
         )
 
     hint = flake_lock_update_hint(root)
@@ -159,21 +155,9 @@ def check_nixpick_flake_lock() -> tuple[bool, str]:
     if not sources_changed and volatile_changed:
         return (
             True,
-            (
-                "flake.lock diverge de l'arbre nixpick, mais seuls des fichiers "
-                "volatils (.git, caches) ont bougé depuis le lock — sources "
-                "inchangées, aucune action nécessaire.\n"
-                f"      lock : {locked_hash}\n"
-                f"      actuel : {current}"
-            ),
+            t("lock.diverged_volatile", locked=locked_hash, current=current),
         )
     return (
         False,
-        (
-            "flake.lock périmé pour l'input nixpick : hash de chemin divergent "
-            "depuis le dernier lock.\n"
-            f"      lock : {locked_hash}\n"
-            f"      actuel : {current}\n"
-            f"      → {hint}"
-        ),
+        t("lock.stale", locked=locked_hash, current=current, hint=hint),
     )

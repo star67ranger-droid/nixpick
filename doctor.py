@@ -26,6 +26,7 @@ from engine import (
 )
 from flake_git import check_flake_untracked
 from flake_lock import check_nixpick_flake_lock
+from i18n import t
 
 
 @dataclass(frozen=True)
@@ -40,102 +41,96 @@ def _check_packages_file() -> Check:
     if not path.exists():
         if not is_nixos():
             return Check(
-                "Fichier packages",
+                t("doc.label_packages"),
                 True,
-                f"{path} n'existe pas encore (sera créé au premier ajout).",
+                t("doc.pkg_will_create", path=path),
             )
         parent = path.parent
         if parent.exists() and os.access(parent, os.W_OK):
             return Check(
-                "Fichier packages",
+                t("doc.label_packages"),
                 False,
-                f"{path} n'existe pas encore (le dossier parent est inscriptible).",
+                t("doc.pkg_writable_parent", path=path),
             )
         return Check(
-            "Fichier packages",
+            t("doc.label_packages"),
             False,
-            f"{path} introuvable et le dossier parent n'est pas inscriptible.",
+            t("doc.pkg_unwritable", path=path),
         )
     if not os.access(path, os.R_OK):
-        return Check("Fichier packages", False, f"{path} illisible.")
+        return Check(t("doc.label_packages"), False, f"{path} illisible.")
     if not os.access(path, os.W_OK):
         return Check(
-            "Fichier packages",
+            t("doc.label_packages"),
             False,
-            f"{path} existe mais n'est pas modifiable.",
+            t("doc.pkg_readonly", path=path),
         )
-    return Check("Fichier packages", True, f"{path} présent et modifiable.")
+    return Check(t("doc.label_packages"), True, t("doc.pkg_ok", path=path))
 
 
 def _check_index() -> Check:
     index_file = engine.INDEX_FILE
     if not index_file.exists():
         return Check(
-            "Cache index",
+            t("doc.label_index"),
             False,
-            f"Pas d'index dans {index_file.parent} "
-            "(lance nixpick --build-index-only ou ouvre la TUI).",
+            t("doc.index_missing", parent=index_file.parent),
         )
     age = index_age_days()
     age_str = f"{age:.1f}" if age is not None else "?"
-    detail = f"Index présent ({index_file.name}), âge {age_str} j."
+    detail = t("doc.index_present", name=index_file.name, age=age_str)
     if age is not None and age > engine.INDEX_MAX_AGE_DAYS:
-        detail += (
-            f" Plus de {engine.INDEX_MAX_AGE_DAYS} j — "
-            "un refresh est conseillé (nixpick --refresh)."
-        )
-    return Check("Cache index", True, detail)
+        detail += t("doc.index_stale", days=engine.INDEX_MAX_AGE_DAYS)
+    return Check(t("doc.label_index"), True, detail)
 
 
 def _check_lock() -> Check:
     lock = packages_lock_path()
     if not lock.exists():
-        return Check("Verrou d'édition", True, "Aucun fichier verrou (.nixpick.lock).")
+        return Check(t("doc.label_lock"), True, t("doc.lock_none"))
     try:
         with open(lock, "a+", encoding="utf-8") as fh:
             try:
                 fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
                 return Check(
-                    "Verrou d'édition",
+                    t("doc.label_lock"),
                     True,
-                    f"{lock.name} présent mais inactif (pas d'édition en cours).",
+                    t("doc.lock_idle", name=lock.name),
                 )
             except BlockingIOError:
                 return Check(
-                    "Verrou d'édition",
+                    t("doc.label_lock"),
                     False,
-                    f"Verrou actif sur {lock.name} — "
-                    "une session nixpick modifie peut-être le fichier.",
+                    t("doc.lock_active", name=lock.name),
                 )
     except OSError as err:
-        return Check("Verrou d'édition", False, f"Impossible de tester le verrou : {err}")
+        return Check(t("doc.label_lock"), False, t("doc.lock_untestable", err=err))
 
 
 def _check_nix_env() -> Check:
     if shutil.which("nix-env"):
-        return Check("nix-env", True, "nix-env trouvé dans le PATH.")
+        return Check(t("doc.label_nixenv"), True, t("doc.nixenv_ok"))
     if shutil.which("nix"):
         return Check(
             "nix-env",
             False,
-            "nix-env absent — requis pour l'index (nix-env -qaP). "
-            "Installe le profil Nix classique ou active nix-command + nix-env.",
+            t("doc.nixenv_noenv"),
         )
     return Check(
         "nix-env",
         False,
-        "Nix absent du PATH — requis pour l'index et les descriptions.",
+        t("doc.nixenv_nonix"),
     )
 
 
 def _check_rofi() -> Check:
     if shutil.which("rofi"):
-        return Check("rofi (optionnel)", True, "rofi trouvé (pour nixpick --rofi).")
+        return Check(t("doc.label_rofi"), True, t("doc.rofi_ok"))
     return Check(
-        "rofi (optionnel)",
+        t("doc.label_rofi"),
         True,
-        "rofi absent — seulement utile avec nixpick --rofi.",
+        t("doc.rofi_missing"),
     )
 
 
@@ -146,15 +141,15 @@ def _check_rebuild() -> Check:
     cmd = format_rebuild_command()
     if not argv:
         return Check(
-            "Commande rebuild",
+            t("doc.label_rebuild"),
             False,
-            "rebuild_command vide — configure config.toml ou NIXPICK_REBUILD_COMMAND.",
+            t("doc.rebuild_empty"),
         )
-    detail = f"Après ajout ou retrait : {cmd}"
+    detail = t("doc.rebuild_ok", cmd=cmd)
     if not is_nixos():
-        detail += " — sans objet hors NixOS (appliquer avec `nixpick sync`)."
+        detail += t("doc.rebuild_no_nixos")
     return Check(
-        "Commande rebuild",
+        t("doc.label_rebuild"),
         True,
         detail,
     )
@@ -184,16 +179,16 @@ def collect_checks() -> list[Check]:
 
 
 def format_doctor_report(checks: list[Check]) -> str:
-    lines = ["Diagnostic nixpick", ""]
+    lines = [t("doc.title"), ""]
     for check in checks:
         mark = "OK" if check.ok else "!!"
         lines.append(f"  [{mark}] {check.label} — {check.detail}")
     lines.append("")
     failed = [c for c in checks if not c.ok]
     if failed:
-        lines.append(f"{len(failed)} point(s) à corriger.")
+        lines.append(t("doc.report_failures", n=len(failed)))
     else:
-        lines.append("Tout semble en ordre.")
+        lines.append(t("doc.report_ok"))
     return "\n".join(lines)
 
 
@@ -252,12 +247,12 @@ def run_why(attr: str, *, out: TextIO | None = None) -> int:
     stream = out or sys.stdout
     attr = attr.strip()
     if not attr or not ATTR_NAME_RE.match(attr):
-        print(f"Attribut invalide : {attr!r}", file=sys.stderr)
+        print(t("doc.why_invalid", attr=attr), file=sys.stderr)
         return 2
 
     path = packages_file()
     if not path.exists():
-        print(f"Fichier configuré introuvable : {path}", file=sys.stderr)
+        print(t("doc.why_missing", path=path), file=sys.stderr)
         return 1
 
     lines = path.read_text(encoding="utf-8").splitlines()

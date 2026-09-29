@@ -22,7 +22,7 @@ jobs:
           git config --global user.email "nixpick-ci@localhost"
           git config --global user.name "nixpick-ci"
       - run: pip install -e ".[dev]"
-      - run: pytest -q --cov=. --cov-report=term-missing --cov-fail-under=72
+      - run: pytest -q --cov=. --cov-report=term-missing --cov-fail-under=73
 
   flake:
     runs-on: ubuntu-latest
@@ -49,7 +49,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install "mypy==1.18.*"
-      - run: mypy --follow-imports=skip engine.py sync_runner.py config.py theme.py cli.py rofi_mode.py doctor.py nixpick.py flake_git.py fix_git_runner.py messages.py rebuild_runner.py flake_lock.py native_env.py
+      - run: mypy --follow-imports=skip engine.py sync_runner.py config.py theme.py cli.py rofi_mode.py doctor.py nixpick.py flake_git.py fix_git_runner.py messages.py rebuild_runner.py flake_lock.py native_env.py i18n.py errors.py
 
   # Release « notes seules » (aucun artefact) : uniquement sur tag,
   # et seulement si tous les checks sont verts.

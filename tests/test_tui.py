@@ -16,6 +16,7 @@ import pytest
 
 import tui
 from engine import AddPlan
+from i18n import get_language, set_language
 
 
 class FakeDescCache:
@@ -526,6 +527,118 @@ def test_refresh_ignore_si_chargement_en_cours() -> None:
     app.action_refresh_index()
     assert calls == []
     assert "déjà en cours" in (app.toast.peek() or "")
+
+
+def test_parametres_bascule_langue(
+    tui_env: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ctrl+S → modale, Entrée sur la langue → en + persisté, puis retour fr."""
+    monkeypatch.setattr("config.CONFIG_FILE", tmp_path / "config.toml")
+    monkeypatch.setattr("config.CONFIG_DIR", tmp_path)
+
+    async def scenario() -> None:
+        _app, setup = await _boot()
+        try:
+            assert get_language() == "fr"
+            setup.mock_input.press_key("s", ctrl=True)
+            await _pump(setup, timeout=0.3)
+            assert "Paramètres" in _text(setup)
+            setup.mock_input.press_key("enter")
+            await _pump(setup, timeout=0.3)
+            assert get_language() == "en"
+            assert "Settings" in _text(setup)
+            assert 'language = "en"' in (tmp_path / "config.toml").read_text(
+                encoding="utf-8"
+            )
+        finally:
+            set_language("fr")
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
+def test_parametres_modifie_fichier_packages(
+    tui_env: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2×↓ + Entrée → édition, frappe, Entrée → sauvegardé."""
+    monkeypatch.setattr("config.CONFIG_FILE", tmp_path / "config.toml")
+    monkeypatch.setattr("config.CONFIG_DIR", tmp_path)
+    target = tmp_path / "mes-paquets.nix"
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            setup.mock_input.press_key("s", ctrl=True)
+            await _pump(setup, timeout=0.3)
+            setup.mock_input.press_key("down")
+            setup.mock_input.press_key("down")
+            await _pump(setup, timeout=0.2)
+            setup.mock_input.press_key("enter")
+            await _pump(setup, timeout=0.2)
+            assert app.settings_editing is True
+            setup.mock_input.type_text(str(target))
+            await _pump(setup, timeout=0.3)
+            setup.mock_input.press_key("enter")
+            await _pump(setup, timeout=0.3)
+            assert app.settings_editing is False
+            # Le toast est tronqué en largeur : on vérifie le fichier config.
+            assert "mes-paquets.nix" in (tmp_path / "config.toml").read_text(
+                encoding="utf-8"
+            )
+            assert "Fichier packages" in _text(setup)
+        finally:
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
+def test_parametres_chemin_invalide_reste_ouvert(
+    tui_env: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Chemin non .nix → toast d'erreur, édition toujours ouverte."""
+    monkeypatch.setattr("config.CONFIG_FILE", tmp_path / "config.toml")
+    monkeypatch.setattr("config.CONFIG_DIR", tmp_path)
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            setup.mock_input.press_key("s", ctrl=True)
+            await _pump(setup, timeout=0.3)
+            setup.mock_input.press_key("down")
+            setup.mock_input.press_key("down")
+            setup.mock_input.press_key("enter")
+            await _pump(setup, timeout=0.2)
+            setup.mock_input.type_text("/tmp/nope")
+            await _pump(setup, timeout=0.3)
+            setup.mock_input.press_key("enter")
+            await _pump(setup, timeout=0.3)
+            assert app.settings_editing is True
+        finally:
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
+def test_rendu_anglais_apres_bascule(tui_env: dict[str, Any]) -> None:
+    """Le passage en anglais se voit à l'écran (footer + hint)."""
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            set_language("en")
+            app.rev_bump()
+            await _pump(setup, timeout=0.3)
+            text = _text(setup)
+            assert "quitter" not in text
+            assert "quit" in text
+            setup.mock_input.type_text("zzz-introuvable")
+            await _pump(setup, timeout=0.5)
+            assert "no results" in _text(setup)
+        finally:
+            set_language("fr")
+            setup.renderer.stop()
+
+    _run(scenario())
 
 
 def test_petit_terminal_bloque_validation_modale() -> None:

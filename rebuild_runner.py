@@ -15,6 +15,7 @@ from flake_lock import (
     flake_lock_update_hint,
     nixos_flake_root,
 )
+from i18n import t
 from messages import is_affirmative
 
 
@@ -43,7 +44,7 @@ def run_rebuild(
     """Exécute rebuild_command. Retourne le code de sortie du sous-processus."""
     argv = list(rebuild_command())
     if not argv:
-        print("rebuild_command vide — configure config.toml ou NIXPICK_REBUILD_COMMAND.", file=sys.stderr)
+        print(t("rb.empty_cmd"), file=sys.stderr)
         return 1
     display_cmd = shlex.join(argv)
 
@@ -59,14 +60,12 @@ def run_rebuild(
     if not yes:
         if not sys.stdin.isatty():
             print(
-                "Rebuild non lancé : pas de terminal interactif.\n"
-                f"  {display_cmd}\n"
-                "Utilise : nixpick rebuild --yes",
+                t("rb.no_tty", cmd=display_cmd),
                 file=sys.stderr,
             )
             return 1
         try:
-            answer = input(f"Lancer le rebuild ?\n  {display_cmd}\n[o/N] ").strip().lower()
+            answer = input(t("rb.confirm", cmd=display_cmd)).strip().lower()
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
             return 1
@@ -77,8 +76,7 @@ def run_rebuild(
         configured = os.environ.get("NIXPICK_REBUILD_TERMINAL", "").strip()
         if configured and shutil.which(configured) is None:
             print(
-                f"NIXPICK_REBUILD_TERMINAL={configured} introuvable — "
-                "repli sur le terminal détecté.",
+                t("rb.term_invalid", term=configured),
                 file=sys.stderr,
             )
             configured = ""
@@ -91,10 +89,10 @@ def run_rebuild(
             proc = subprocess.run(_terminal_argv(term, inner), check=False)
             return int(proc.returncode or 0)
         print(
-            "Rebuild terminal : aucun émulateur trouvé (kitty, foot, alacritty, wezterm).",
+            t("rb.no_term"),
             file=sys.stderr,
         )
-        print(f"Lance manuellement : {display_cmd}", file=sys.stderr)
+        print(t("rb.manual", cmd=display_cmd), file=sys.stderr)
         return 1
 
     proc = subprocess.run(argv, check=False)
@@ -105,18 +103,17 @@ def run_rebuild(
 
 
 def _print_rebuild_hints() -> None:
-    print("\n— Aide nixpick (relis l’erreur Nix ci-dessus) —", file=sys.stderr)
+    print(t("rb.hints_title"), file=sys.stderr)
     ok_git, git_detail = check_flake_untracked()
     if not ok_git:
-        print("  • Fichiers non suivis par Git :", file=sys.stderr)
+        print(t("rb.hints_untracked"), file=sys.stderr)
         for line in git_detail.splitlines():
             print(f"    {line}", file=sys.stderr)
     else:
         root = nixos_flake_root()
         hint_root = str(root) if root else "/etc/nixos"
         print(
-            f"  • Fichier « not tracked by Git » : le flake ne voit que ce qui est "
-            f"dans git — ex. git -C {hint_root} add dotfiles/…/fichier",
+            t("rb.hints_tracked", root=hint_root),
             file=sys.stderr,
         )
     ok, _detail = check_nixpick_flake_lock()
@@ -124,13 +121,13 @@ def _print_rebuild_hints() -> None:
         root = nixos_flake_root()
         if root:
             print(
-                "  • Si le message cite « NAR hash mismatch » et nixpick :",
+                t("rb.hints_nar"),
                 file=sys.stderr,
             )
             print(f"      {flake_lock_update_hint(root)}", file=sys.stderr)
         else:
             print(
-                "  • Input path nixpick : mets à jour flake.lock après changement du code.",
+                t("rb.hints_path_note"),
                 file=sys.stderr,
             )
 

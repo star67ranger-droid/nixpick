@@ -2,6 +2,9 @@
 # Couleurs : voir docs/THEMES.md
 # Les clés peuvent aussi vivre sous une table [nixpick] (même noms).
 
+# Langue d'interface : fr (défaut) ou en. Changeable en direct (Ctrl+S).
+# language = "fr"
+
 packages_file = "/etc/nixos/modules/packages.nix"
 packages_anchor = "environment.systemPackages"
 # Tableau d'arguments : aucune interprétation shell n'est effectuée.

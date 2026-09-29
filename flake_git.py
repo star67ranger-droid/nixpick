@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from flake_lock import nixos_flake_root
+from i18n import t
 
 _MAX_LISTED = 24
 _GIT_ADD_BATCH = 200
@@ -67,10 +69,10 @@ def list_untracked_paths(flake_root: Path) -> tuple[list[str], str | None]:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as err:
-        return [], f"git status indisponible : {err}"
+        return [], t("git.status_unavailable", err=err)
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
-        return [], f"git status a échoué (code {proc.returncode}). {detail}".strip()
+        return [], t("git.status_failed", code=proc.returncode, detail=detail).strip()
 
     prefix = _flake_path_prefix(flake_root, git_top)
     if prefix is None:
@@ -129,8 +131,8 @@ def git_add_untracked(git_top: Path, paths: list[str]) -> int:
     ]
     if len(safe) < len(paths):
         print(
-            f"Attention : {len(paths) - len(safe)} chemin(s) ignoré(s) (nom invalide).",
-            file=__import__("sys").stderr,
+            t("git.paths_skipped", n=len(paths) - len(safe)),
+            file=sys.stderr,
         )
     if not safe:
         return 1
@@ -154,7 +156,7 @@ def check_flake_untracked() -> tuple[bool, str]:
     """
     flake_root = nixos_flake_root()
     if flake_root is None:
-        return True, "Pas de flake NixOS détecté (check Git ignoré)."
+        return True, t("git.no_flake_check"),
 
     git_top = git_top_for_flake(flake_root)
     if git_top is None:
@@ -172,23 +174,23 @@ def check_flake_untracked() -> tuple[bool, str]:
             rel_flake = flake_root
         return (
             True,
-            f"Dépôt {git_top} : aucun fichier non suivi (??) sous le flake. Racine flake : {rel_flake}/",
+            t("git.clean", top=git_top, rel=rel_flake),
         )
 
     shown = untracked[:_MAX_LISTED]
     extra = len(untracked) - len(shown)
     lines = [
-        f"{len(untracked)} fichier(s) non suivi(s) sous le flake — Nix ne les voit pas tant qu'ils ne sont pas dans git :",
+        t("git.untracked_head", n=len(untracked)),
     ]
     for p in shown:
         lines.append(f"      • {p}")
     if extra > 0:
-        lines.append(f"      … et {extra} autre(s).")
+        lines.append(t("git.untracked_more", n=extra))
     lines.append("")
     cmd_paths = shown if extra == 0 else untracked
     lines.append(f"      {format_git_add_command(git_top, cmd_paths)}")
     if extra > 0:
-        lines.append("      (commande ci-dessus inclut tous les fichiers non suivis.)")
+        lines.append(t("git.untracked_all_included"))
     return False, "\n".join(lines)
 
 
@@ -197,9 +199,7 @@ def rebuild_preflight_message() -> str | None:
     if ok:
         return None
     return (
-        "Rebuild bloqué avant lancement : des fichiers du flake ne sont pas suivis par Git.\n"
-        f"{detail}\n"
-        "Puis : nixpick fix-git   ou   nixpick rebuild"
+        t("git.preflight_blocked", detail=detail)
     )
 
 

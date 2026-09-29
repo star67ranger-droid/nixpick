@@ -92,6 +92,7 @@ Variables d’environnement (prioritaires) :
 | `NIXPICK_PACKAGES_ANCHOR` | Ligne d’ancrage (défaut `environment.systemPackages`) |
 | `NIXPICK_REBUILD_COMMAND` | Tableau TOML ou chaîne shell (`shlex`), p. ex. `["sudo", "nixos-rebuild", "switch"]` — jamais de JSON, aucun shell |
 | `NIXPICK_REBUILD_TERMINAL` | Émulateur pour `rebuild --terminal` (vérifié dans le PATH, sinon repli auto : kitty, foot, alacritty, wezterm) |
+| `NIXPICK_LANGUAGE` | `fr` (défaut) ou `en` — prioritaire sur `language` du config ; changeable en direct via Ctrl+S |
 
 Vérifier :
 
@@ -159,6 +160,7 @@ suggestions au repos, footer en bas.
 - **Ctrl+I** : masquer les paquets installés · **Ctrl+D** : simulation
 - **Tab** : basculer recherche / liste (puis `x l i d t q` au focus liste) · **Esc** : vider la recherche, puis quitter
 - **Ctrl+R** : reconstruire l’index · **?** / **F1** : aide
+- **Ctrl+S** : paramètres (langue FR/EN en direct, fond transparent, fichier packages — sauvegardés dans `config.toml`)
 
 Les entrées déjà présentes dans `systemPackages` sont marquées **●**.
 

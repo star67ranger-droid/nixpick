@@ -14,7 +14,7 @@ def test_offer_rebuild_stops_on_preflight(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("rofi_mode.is_nixos", lambda: True)
     monkeypatch.setattr(
         "rofi_mode._rofi",
-        lambda *a, **k: rofi_mode.ROFI_REBUILD_NOW,
+        lambda *a, **k: rofi_mode.rofi_rebuild_now(),
     )
     monkeypatch.setattr(
         "rofi_mode.rebuild_preflight_notify_body",
@@ -37,7 +37,7 @@ def test_offer_rebuild_stops_on_preflight(monkeypatch: pytest.MonkeyPatch) -> No
 def test_offer_rebuild_fix_git_primary_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rofi_mode.is_nixos", lambda: True)
     monkeypatch.setattr("rofi_mode.check_flake_untracked", lambda: (False, "untracked files"))
-    monkeypatch.setattr("rofi_mode._rofi", lambda *a, **k: rofi_mode.ROFI_FIX_GIT)
+    monkeypatch.setattr("rofi_mode._rofi", lambda *a, **k: rofi_mode.rofi_fix_git())
     fix_git = mock.Mock(return_value=0)
     monkeypatch.setattr("rofi_mode.run_fix_git", fix_git)
     notify = mock.Mock()
@@ -55,7 +55,7 @@ def test_offer_rebuild_fix_git_primary_success(monkeypatch: pytest.MonkeyPatch) 
 def test_offer_rebuild_fix_git_primary_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rofi_mode.is_nixos", lambda: True)
     monkeypatch.setattr("rofi_mode.check_flake_untracked", lambda: (False, "untracked files"))
-    monkeypatch.setattr("rofi_mode._rofi", lambda *a, **k: rofi_mode.ROFI_FIX_GIT)
+    monkeypatch.setattr("rofi_mode._rofi", lambda *a, **k: rofi_mode.rofi_fix_git())
     fix_git = mock.Mock(return_value=1)
     monkeypatch.setattr("rofi_mode.run_fix_git", fix_git)
     notify = mock.Mock()
@@ -73,7 +73,7 @@ def test_offer_rebuild_fix_git_primary_failure(monkeypatch: pytest.MonkeyPatch) 
 
 def test_offer_rebuild_fix_git_from_preflight_dialog(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rofi_mode.is_nixos", lambda: True)
-    rofi_responses = [rofi_mode.ROFI_REBUILD_NOW, rofi_mode.ROFI_FIX_GIT]
+    rofi_responses = [rofi_mode.rofi_rebuild_now(), rofi_mode.rofi_fix_git()]
     monkeypatch.setattr("rofi_mode._rofi", lambda *a, **k: rofi_responses.pop(0))
     monkeypatch.setattr(
         "rofi_mode.rebuild_preflight_notify_body",
@@ -94,16 +94,16 @@ def test_offer_rebuild_fix_git_from_preflight_dialog(monkeypatch: pytest.MonkeyP
 
 
 def test_rofi_rebuild_choices_git_ok_toggle() -> None:
-    from messages import ROFI_FIX_GIT, rofi_rebuild_choices
+    from messages import rofi_fix_git, rofi_rebuild_choices
 
-    assert ROFI_FIX_GIT in rofi_rebuild_choices(git_ok=False)
-    assert ROFI_FIX_GIT not in rofi_rebuild_choices(git_ok=True)
+    assert rofi_fix_git() in rofi_rebuild_choices(git_ok=False)
+    assert rofi_fix_git() not in rofi_rebuild_choices(git_ok=True)
 
 
 def test_offer_sync_hors_nixos(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rofi_mode.is_nixos", lambda: False)
     monkeypatch.setattr("config.is_nixos", lambda: False)
-    monkeypatch.setattr("rofi_mode._rofi", lambda *a, **k: rofi_mode.ROFI_SYNC_NOW)
+    monkeypatch.setattr("rofi_mode._rofi", lambda *a, **k: rofi_mode.rofi_sync_now())
     sync = mock.Mock(return_value=0)
     monkeypatch.setattr("rofi_mode.run_sync", sync)
     notify = mock.Mock()
@@ -121,7 +121,7 @@ def test_offer_sync_refuse_hors_nixos(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rofi_mode.is_nixos", lambda: False)
     monkeypatch.setattr("config.is_nixos", lambda: False)
     monkeypatch.setattr(
-        "rofi_mode._rofi", lambda *a, **k: rofi_mode.ROFI_REBUILD_LATER
+        "rofi_mode._rofi", lambda *a, **k: rofi_mode.rofi_rebuild_later()
     )
     sync = mock.Mock()
     monkeypatch.setattr("rofi_mode.run_sync", sync)

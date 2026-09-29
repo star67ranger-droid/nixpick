@@ -26,13 +26,6 @@ from engine import (
 from fix_git_runner import run_fix_git
 from flake_git import check_flake_untracked, rebuild_preflight_notify_body
 from messages import (
-    ROFI_CANCEL,
-    ROFI_CONFIRM_ADD,
-    ROFI_CONFIRM_REMOVE,
-    ROFI_FIX_GIT,
-    ROFI_REBUILD_LATER,
-    ROFI_REBUILD_NOW,
-    ROFI_SYNC_NOW,
     diff_preview_text,
     notify_add_failure,
     notify_dry_run_add,
@@ -44,8 +37,15 @@ from messages import (
     notify_search_too_short,
     notify_success_add,
     notify_success_remove,
+    rofi_cancel,
+    rofi_confirm_add,
     rofi_confirm_choices,
+    rofi_confirm_remove,
+    rofi_fix_git,
     rofi_rebuild_choices,
+    rofi_rebuild_later,
+    rofi_rebuild_now,
+    rofi_sync_now,
 )
 from rebuild_runner import run_rebuild
 from rofi_theme import sync_rofi_themes
@@ -133,10 +133,10 @@ def _offer_rebuild() -> None:
     if not is_nixos():
         answer = _rofi(
             "Installer les paquets listés dans ton profil ?",
-            [ROFI_SYNC_NOW, ROFI_REBUILD_LATER],
+            [rofi_sync_now(), rofi_rebuild_later()],
             max_lines=2,
         )
-        if answer != ROFI_SYNC_NOW:
+        if answer != rofi_sync_now():
             return
         # `nix profile install` peut durer des minutes, rofi déjà fermé :
         # on annonce le début pour éviter les relances en double.
@@ -163,7 +163,7 @@ def _offer_rebuild() -> None:
     choices = rofi_rebuild_choices(git_ok=ok_git)
     answer = _rofi("Appliquer sur le système ?", choices, max_lines=max(2, len(choices)))
 
-    if answer == ROFI_FIX_GIT:
+    if answer == rofi_fix_git():
         code_git = run_fix_git(yes=True)
         if code_git == 0:
             _notify("nixpick — Git flake", "Fichiers ajoutés au suivi Git.\nLancement du rebuild…")
@@ -175,7 +175,7 @@ def _offer_rebuild() -> None:
             )
         return
 
-    if answer != ROFI_REBUILD_NOW:
+    if answer != rofi_rebuild_now():
         return
 
     preflight = rebuild_preflight_notify_body()
@@ -183,10 +183,10 @@ def _offer_rebuild() -> None:
         _notify("nixpick — Git flake", preflight)
         choice = _rofi(
             "Git flake : fichiers non suivis",
-            [ROFI_FIX_GIT, ROFI_CANCEL],
+            [rofi_fix_git(), rofi_cancel()],
             max_lines=2,
         )
-        if choice == ROFI_FIX_GIT:
+        if choice == rofi_fix_git():
             code_git = run_fix_git(yes=True)
             if code_git == 0:
                 _notify(
@@ -235,8 +235,8 @@ def _confirm_plan(
         max_lines=2,
     )
     if remove:
-        return answer == ROFI_CONFIRM_REMOVE
-    return answer == ROFI_CONFIRM_ADD
+        return answer == rofi_confirm_remove()
+    return answer == rofi_confirm_add()
 
 
 def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:

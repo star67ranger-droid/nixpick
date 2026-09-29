@@ -28,6 +28,8 @@ ROOT_MODULES = [
     "rofi_theme",
     "native_env",
     "theme",
+    "i18n",
+    "errors",
 ]
 
 DATA_FILES = [
