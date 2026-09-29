@@ -20,7 +20,7 @@ from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 
-from config import get_settings
+from config import get_settings, is_nixos
 
 
 def packages_file() -> Path:
@@ -420,6 +420,20 @@ def _read_packages_lines() -> list[str] | AddFailure:
     return path.read_text(encoding="utf-8").splitlines(keepends=True)
 
 
+def packages_skeleton_text(anchor: str | None = None) -> str:
+    """Contenu minimal pour un premier packages.nix local (hors NixOS)."""
+    block_anchor = anchor if anchor is not None else packages_anchor()
+    return (
+        "# Fichier packages nixpick — complète le module parent si besoin.\n"
+        f"{block_anchor} = with pkgs; [\n"
+        "];\n"
+    )
+
+
+def _write_packages_skeleton(path: Path) -> None:
+    _atomic_write_text(path, packages_skeleton_text())
+
+
 def _strip_nix_line_comment(line: str) -> str:
     """Retire les commentaires `#` hors chaînes, sans parser les chaînes Nix."""
     in_string = False
@@ -776,6 +790,7 @@ class AddPlan:
     context_lines: list[str]
     packages_file: Path
     backup_path: Path
+    created_file: bool = False
 
 
 class AddOutcome(Enum):
@@ -796,10 +811,17 @@ def plan_add(attr: str, description: str) -> AddPlan | AddFailure:
     if invalid:
         return AddFailure(AddOutcome.INVALID_ATTR, invalid)
 
+    created_file = False
     lines_or_err = _read_packages_lines()
     if isinstance(lines_or_err, AddFailure):
-        return lines_or_err
-    lines = lines_or_err
+        if lines_or_err.outcome != AddOutcome.FILE_MISSING or is_nixos():
+            return lines_or_err
+        path = packages_file()
+        _write_packages_skeleton(path)
+        created_file = True
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    else:
+        lines = lines_or_err
 
     if already_listed(lines, attr):
         return AddFailure(
@@ -825,6 +847,7 @@ def plan_add(attr: str, description: str) -> AddPlan | AddFailure:
         context_lines=context,
         packages_file=packages_file(),
         backup_path=_backup_path(),
+        created_file=created_file,
     )
 
 

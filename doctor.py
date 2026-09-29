@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import engine
+from config import is_nixos
 from engine import (
     ATTR_NAME_RE,
     find_package_line_index,
@@ -36,6 +37,12 @@ class Check:
 def _check_packages_file() -> Check:
     path = packages_file()
     if not path.exists():
+        if not is_nixos():
+            return Check(
+                "Fichier packages",
+                False,
+                f"{path} n'existe pas encore — il sera créé au premier ajout.",
+            )
         parent = path.parent
         if parent.exists() and os.access(parent, os.W_OK):
             return Check(
