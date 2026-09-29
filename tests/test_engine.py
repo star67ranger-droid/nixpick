@@ -122,6 +122,34 @@ def test_fetch_descriptions_skips_invalid(monkeypatch: pytest.MonkeyPatch) -> No
     assert fetch_descriptions(["bad;attr"]) == {}
 
 
+def test_run_nix_command_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    from engine import NixCommandError, run
+
+    monkeypatch.setattr(
+        "engine.subprocess.run",
+        lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+    with pytest.raises(NixCommandError, match="introuvable"):
+        run(["nix-env", "-qaP"], timeout=1)
+
+    monkeypatch.setattr(
+        "engine.subprocess.run",
+        lambda *a, **k: (_ for _ in ()).throw(subprocess.TimeoutExpired("nix-env", 1)),
+    )
+    with pytest.raises(NixCommandError, match="dépassé"):
+        run(["nix-env", "-qaP"], timeout=1)
+
+    err = subprocess.CalledProcessError(1, "nix-env", stderr="flake error")
+    monkeypatch.setattr(
+        "engine.subprocess.run",
+        lambda *a, **k: (_ for _ in ()).throw(err),
+    )
+    with pytest.raises(NixCommandError, match="flake error"):
+        run(["nix-env", "-qaP"], timeout=1)
+
+
 def test_atomic_write_preserves_mode(tmp_path: Path) -> None:
     """UX-06 : la réécriture atomique ne doit pas passer le fichier en 0600."""
     import os
