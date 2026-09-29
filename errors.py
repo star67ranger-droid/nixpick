@@ -26,7 +26,8 @@ def explain_error(err: BaseException) -> str | None:
     if isinstance(err, subprocess.CalledProcessError):
         if err.returncode == -9:
             return t("err.sigkill")
-        return _explain_text(str(err))
+        detail = (err.stderr or err.stdout or str(err)).strip()
+        return _explain_text(detail)
     return _explain_text(str(err))
 
 

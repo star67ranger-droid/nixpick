@@ -9,12 +9,14 @@ import pytest
 import engine as engine_module
 from config import reset_settings_cache
 from engine import (
+    NixCommandError,
     PackageIndex,
     PackageRow,
     find_package_line_index,
     list_installed_attrs,
     plan_add,
     plan_remove,
+    run,
     search_index,
 )
 
@@ -110,6 +112,31 @@ def test_parser_counts_nested_lists_and_ignores_comment_brackets(packages_nix: P
     ]
     insert_at, _indent = _find_insertion_point(lines)
     assert insert_at == 5
+
+
+def test_run_maps_subprocess_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    def missing(*_a: object, **_k: object) -> str:
+        raise FileNotFoundError(2, "No such file", "nix-env")
+
+    monkeypatch.setattr("engine.subprocess.run", missing)
+    with pytest.raises(NixCommandError, match="nix-env"):
+        run(["nix-env", "-qaP"], timeout=5)
+
+    def timeout(*_a: object, **_k: object) -> str:
+        raise subprocess.TimeoutExpired("nix-env", 5)
+
+    monkeypatch.setattr("engine.subprocess.run", timeout)
+    with pytest.raises(NixCommandError, match="nix-env"):
+        run(["nix-env"], timeout=5)
+
+    def failed(*_a: object, **_k: object) -> str:
+        raise subprocess.CalledProcessError(1, ["nix-env"], stderr="channel missing")
+
+    monkeypatch.setattr("engine.subprocess.run", failed)
+    with pytest.raises(NixCommandError, match="channel missing"):
+        run(["nix-env"], timeout=5)
 
 
 def test_fetch_descriptions_skips_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
