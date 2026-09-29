@@ -33,7 +33,7 @@ def test_completions_couvrent_le_cli(
     usage = re.search(r"\{([^}]+)\}", global_help)
     assert usage is not None
     subcommands = usage.group(1).split(",")
-    assert {"doctor", "rebuild", "fix-git"} <= set(subcommands)
+    assert {"doctor", "rebuild", "fix-git", "sync"} <= set(subcommands)
 
     wanted = set(re.findall(r"--[\w-]+", global_help))
     for sub in subcommands:
