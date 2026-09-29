@@ -529,10 +529,28 @@ def test_refresh_ignore_si_chargement_en_cours() -> None:
     assert "déjà en cours" in (app.toast.peek() or "")
 
 
+def test_ctrl_l_ouvre_parametres_pas_catalogue(tui_env: dict[str, Any]) -> None:
+    """Régression : ^L ouvre les paramètres (footer), pas le catalogue packages.nix."""
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            setup.mock_input.press_key("l", ctrl=True)
+            await _pump(setup, timeout=0.3)
+            payload = app.modal.peek()
+            assert payload is not None and payload.get("kind") == "settings"
+            assert app.catalog.peek() is False
+            assert "Paramètres" in _text(setup)
+        finally:
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
 def test_parametres_bascule_langue(
     tui_env: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Ctrl+S → modale, Entrée sur la langue → en + persisté, puis retour fr."""
+    """Ctrl+L → modale, Entrée sur la langue → en + persisté, puis retour fr."""
     monkeypatch.setattr("config.CONFIG_FILE", tmp_path / "config.toml")
     monkeypatch.setattr("config.CONFIG_DIR", tmp_path)
 

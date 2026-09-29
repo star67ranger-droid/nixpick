@@ -11,6 +11,8 @@ from config import (
     get_settings,
     load_transparent_background,
     reset_settings_cache,
+    save_language,
+    save_packages_file,
     save_transparent_background,
 )
 
@@ -73,3 +75,32 @@ def test_packages_file_non_string_refuse(cfg: Path) -> None:
     )
     with pytest.raises(ValueError, match="packages_file"):
         get_settings()
+
+
+def test_save_language_upsert(cfg: Path) -> None:
+    save_language("en")
+    text = (cfg / "config.toml").read_text(encoding="utf-8")
+    assert 'language = "en"' in text
+    save_language("fr")
+    assert (cfg / "config.toml").read_text(encoding="utf-8").count("language =") == 1
+
+
+def test_save_language_inconnue_refusee(cfg: Path) -> None:
+    with pytest.raises(ValueError, match="langue"):
+        save_language("de")
+
+
+def test_save_packages_file_persiste_et_recharge(cfg: Path) -> None:
+    target = cfg / "custom.nix"
+    target.write_text("{ }\n", encoding="utf-8")
+    saved = save_packages_file(str(target))
+    assert saved == target.resolve()
+    text = (cfg / "config.toml").read_text(encoding="utf-8")
+    assert "custom.nix" in text
+    reset_settings_cache()
+    assert get_settings().packages_file.resolve() == target.resolve()
+
+
+def test_save_packages_file_rejette_non_nix(cfg: Path) -> None:
+    with pytest.raises(ValueError, match="\\.nix"):
+        save_packages_file("/tmp/readme.txt")
