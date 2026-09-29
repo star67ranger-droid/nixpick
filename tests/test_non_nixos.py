@@ -94,6 +94,20 @@ def test_plan_remove_ne_cree_rien(
     assert not (home / ".config" / "nixpick" / "packages.nix").exists()
 
 
+def test_squelette_respecte_l_ancre_config(
+    no_nixos: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home, _tmp = no_nixos
+    monkeypatch.setenv("NIXPICK_PACKAGES_ANCHOR", "home.packages")
+    reset_settings_cache()
+    plan = engine.plan_add("curl", "")
+    assert not isinstance(plan, engine.AddFailure)
+    text = (home / ".config" / "nixpick" / "packages.nix").read_text(
+        encoding="utf-8"
+    )
+    assert "home.packages = with pkgs;" in text
+
+
 def test_doctor_annonce_creation_hors_nixos(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

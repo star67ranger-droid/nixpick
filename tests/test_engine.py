@@ -223,3 +223,34 @@ def test_commit_add_purge_les_anciennes_sauvegardes(
     assert plan.backup_path.name in remaining
     # les plus anciennes sont parties
     assert "packages.nix.bak.20200101-000000" not in remaining
+
+
+def test_run_raises_when_binary_missing() -> None:
+    from engine import NixCommandError, run
+
+    with pytest.raises(NixCommandError, match="introuvable"):
+        run(["nixpick-test-missing-binary-xyz"], timeout=5)
+
+
+def test_run_maps_subprocess_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    from engine import NixCommandError, run
+
+    def timeout(*_a: object, **_k: object) -> None:
+        raise subprocess.TimeoutExpired(cmd=["nix-env"], timeout=1)
+
+    monkeypatch.setattr("engine.subprocess.run", timeout)
+    with pytest.raises(NixCommandError, match="dépassé"):
+        run(["nix-env", "-qaP"], timeout=1)
+
+    def failed(*_a: object, **_k: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(
+            1, ["nix-env"], stderr="channel not found"
+        )
+
+    monkeypatch.setattr("engine.subprocess.run", failed)
+    with pytest.raises(NixCommandError, match="channel not found"):
+        run(["nix-env", "-qaP"], timeout=1)
