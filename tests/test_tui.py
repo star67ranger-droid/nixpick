@@ -540,7 +540,7 @@ def test_parametres_bascule_langue(
         _app, setup = await _boot()
         try:
             assert get_language() == "fr"
-            setup.mock_input.press_key("s", ctrl=True)
+            setup.mock_input.press_key("l", ctrl=True)
             await _pump(setup, timeout=0.3)
             assert "Paramètres" in _text(setup)
             setup.mock_input.press_key("enter")
@@ -568,7 +568,7 @@ def test_parametres_modifie_fichier_packages(
     async def scenario() -> None:
         app, setup = await _boot()
         try:
-            setup.mock_input.press_key("s", ctrl=True)
+            setup.mock_input.press_key("l", ctrl=True)
             await _pump(setup, timeout=0.3)
             setup.mock_input.press_key("down")
             setup.mock_input.press_key("down")
@@ -602,7 +602,7 @@ def test_parametres_chemin_invalide_reste_ouvert(
     async def scenario() -> None:
         app, setup = await _boot()
         try:
-            setup.mock_input.press_key("s", ctrl=True)
+            setup.mock_input.press_key("l", ctrl=True)
             await _pump(setup, timeout=0.3)
             setup.mock_input.press_key("down")
             setup.mock_input.press_key("down")

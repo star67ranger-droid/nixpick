@@ -133,7 +133,6 @@ _FOOTER_KEYS = (
     ("^D", "tui.footer_dry"),
     ("^T", "tui.footer_bg"),
     ("^R", "tui.footer_index"),
-    ("^S", "tui.footer_settings"),
     ("?", "tui.footer_help"),
     ("esc", "tui.footer_quit"),
 )
@@ -1057,12 +1056,11 @@ class TuiApp:
         actions = {
             "d": self.action_toggle_dry_run,
             "i": self.action_toggle_hide_installed,
-            "l": self.action_toggle_catalog,
+            "l": self.action_settings,
             "t": self.action_toggle_transparent,
             "r": self.action_refresh_index,
             "u": self.action_clear_search,
             "x": self.action_remove,
-            "s": self.action_settings,
             "c": self.quit,
         }
         action = actions.get(key)
