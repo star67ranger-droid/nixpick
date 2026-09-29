@@ -43,6 +43,7 @@ py-modules = [
   "messages",
   "doctor",
   "rebuild_runner",
+  "sync_runner",
   "flake_git",
   "fix_git_runner",
   "flake_lock",
@@ -89,7 +90,7 @@ select = [
 ]
 
 [tool.mypy]
-# Socle typage : engine.py (+ config/theme suivis en import).
+# Socle typage : engine.py + sync_runner.py (config/theme suivis en import).
 # tui.py hors périmètre (API opentui non typée, Any structurel).
 python_version = "3.12"
 

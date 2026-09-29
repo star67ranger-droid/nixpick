@@ -22,7 +22,7 @@ _nixpick() {
         '--undo[restaure packages.nix depuis la dernière sauvegarde]' \
         '--why[dit si un attribut est dans packages.nix]:attr:' \
         '(-h --help)'{-h,--help}'[affiche laide]' \
-        '1:commande:(doctor rebuild fix-git)' \
+        '1:commande:(doctor rebuild fix-git sync)' \
         '*::options:->args' && return 0
 
     case "$line[1]" in
@@ -40,6 +40,12 @@ _nixpick() {
             _arguments \
                 '(-y --yes)'{-y,--yes}'[sans demander confirmation]' \
                 '--dry-run[affiche la commande git sans lexécuter]' \
+                '(-h --help)'{-h,--help}'[affiche laide]' && return 0
+            ;;
+        sync)
+            _arguments \
+                '(-y --yes)'{-y,--yes}'[sans demander confirmation]' \
+                '--dry-run[affiche la commande nix sans lexécuter]' \
                 '(-h --help)'{-h,--help}'[affiche laide]' && return 0
             ;;
     esac

@@ -51,6 +51,7 @@ from opentui.text_utils import wrap_text  # noqa: E402
 
 from config import (  # noqa: E402
     format_rebuild_command,
+    is_nixos,
     load_transparent_background,
     save_transparent_background,
 )
@@ -799,7 +800,10 @@ class TuiApp:
             return
         self.installed = list_installed_attrs()
         self._rebuild_list()
-        msg = f"Ajouté.  apply : {format_rebuild_command()}"
+        if is_nixos():
+            msg = f"Ajouté.  apply : {format_rebuild_command()}"
+        else:
+            msg = "Ajouté.  → `nixpick sync` pour installer dans ton profil"
         if plan.created_file:
             msg = f"Fichier créé : {plan.packages_file}.  {msg}"
         self.notify(msg, timeout=6)

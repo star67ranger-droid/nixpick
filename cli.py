@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 
+from config import is_nixos
 from engine import (
     DEFAULT_RESULT_LIMIT,
     AddFailure,
@@ -171,4 +172,23 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
         say(f"Fichier créé : {plan.packages_file}")
     for line in cli_success_lines(plan.backup_path):
         say(line if line else "")
+    if not is_nixos():
+        return _maybe_install_after_cli(plan.attr)
     return _maybe_rebuild_after_cli()
+
+
+def _maybe_install_after_cli(attr: str) -> int:
+    """Hors NixOS : propose d'installer l'attribut dans le profil."""
+    from sync_runner import install_profile_refs
+
+    try:
+        answer = input(f"\nInstaller nixpkgs#{attr} dans ton profil ? [o/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        say()
+        return 0
+    if answer not in ("o", "oui", "y", "yes"):
+        return 0
+    code = install_profile_refs([f"nixpkgs#{attr}"])
+    if code != 0:
+        say(f"{RED}L'ajout a réussi, mais l'installation a échoué.{RESET}")
+    return 0

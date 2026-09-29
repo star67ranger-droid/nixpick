@@ -3,6 +3,7 @@
 ## non publié
 
 - **Hors NixOS** : sans `/etc/nixos`, la cible devient `~/.config/nixpick/packages.nix`, créée (squelette à l'ancre configurée) au premier ajout — `plan_remove` ne crée rien, NixOS inchangé (`tests/test_non_nixos.py`)
+- **`nixpick sync`** : installe dans le profil les paquets listés mais absents (`nix profile install nixpkgs#…`, jamais de retrait, `-y`/`--dry-run`) ; proposé après chaque ajout CLI, suggéré en TUI/Rofi au lieu du rebuild hors NixOS (`tests/test_sync_runner.py`)
 - **Signalement de bugs** : toute erreur inattendue du CLI affiche le traceback + l'URL des issues GitHub (code 1, `Ctrl+C` → 130) ; toast d'échec d'index et README pointent vers les issues
 - **Complétions shell** : `assets/completions/` (bash, zsh, fish), installées par le flake (`installShellCompletion`) ; synchro avec le CLI testée (`tests/test_completions.py`)
 - **Typage** : `mypy engine.py` vert en CI (4 `None.get` potentiels corrigés dans `config.py` / `theme.py`)

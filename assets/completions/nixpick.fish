@@ -6,6 +6,7 @@
 complete -c nixpick -f -n __fish_use_subcommand -a doctor -d "vérifie config, cache, outils, Git flake et flake.lock"
 complete -c nixpick -f -n __fish_use_subcommand -a rebuild -d "lance la commande rebuild configurée"
 complete -c nixpick -f -n __fish_use_subcommand -a fix-git -d "git add les fichiers non suivis du dépôt flake"
+complete -c nixpick -f -n __fish_use_subcommand -a sync -d "installe dans le profil les paquets listés mais absents"
 
 # Options globales (avant toute sous-commande).
 complete -c nixpick -f -n __fish_use_subcommand -l version -d "affiche la version"
@@ -34,3 +35,6 @@ complete -c nixpick -f -n "__fish_seen_subcommand_from rebuild" -s h -l help -d 
 complete -c nixpick -f -n "__fish_seen_subcommand_from fix-git" -s y -l yes -d "sans demander confirmation"
 complete -c nixpick -f -n "__fish_seen_subcommand_from fix-git" -l dry-run -d "affiche la commande git sans l'exécuter"
 complete -c nixpick -f -n "__fish_seen_subcommand_from fix-git" -s h -l help -d "affiche l'aide"
+complete -c nixpick -f -n "__fish_seen_subcommand_from sync" -s y -l yes -d "sans demander confirmation"
+complete -c nixpick -f -n "__fish_seen_subcommand_from sync" -l dry-run -d "affiche la commande nix sans l'exécuter"
+complete -c nixpick -f -n "__fish_seen_subcommand_from sync" -s h -l help -d "affiche l'aide"

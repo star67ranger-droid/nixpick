@@ -32,6 +32,7 @@ from fix_git_runner import run_fix_git
 from messages import ISSUES_URL
 from rebuild_runner import run_rebuild
 from rofi_mode import run_rofi
+from sync_runner import run_sync
 from tui import run_tui
 
 
@@ -103,6 +104,21 @@ def _run() -> int:
         "--dry-run",
         action="store_true",
         help="affiche la commande git sans l'exécuter",
+    )
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="installe dans le profil Nix les paquets listés mais absents (hors NixOS)",
+    )
+    sync_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="sans demander confirmation",
+    )
+    sync_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="affiche la commande nix sans l'exécuter",
     )
     parser.add_argument(
         "--print-config",
@@ -196,6 +212,9 @@ def _run() -> int:
 
     if args.command == "fix-git":
         return run_fix_git(yes=args.yes, dry_run=args.dry_run)
+
+    if args.command == "sync":
+        return run_sync(yes=args.yes, dry_run=args.dry_run)
 
     if args.print_config:
         s = get_settings()

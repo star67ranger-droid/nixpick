@@ -115,3 +115,49 @@ def test_cli_remove_non_liste(
     packages_nix: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert cli.run_cli_remove("htop", dry_run=False) == 0
+
+
+def test_cli_add_propose_install_oui(
+    packages_nix: Path, fake_index: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hors NixOS : accepter installe nixpkgs#attr dans le profil."""
+    monkeypatch.setattr("cli.is_nixos", lambda: False)
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "sync_runner.install_profile_refs",
+        lambda refs: calls.append(refs) or 0,
+    )
+    _answers(monkeypatch, "1", "o", "o")
+    assert cli.run_cli("htop", refresh=False, dry_run=False) == 0
+    assert calls == [["nixpkgs#htop"]]
+    assert "htop" in packages_nix.read_text(encoding="utf-8")
+
+
+def test_cli_add_propose_install_non(
+    packages_nix: Path, fake_index: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refuser : aucun appel nix, ajout conservé."""
+    monkeypatch.setattr("cli.is_nixos", lambda: False)
+
+    def boom(refs: list[str]) -> int:
+        raise AssertionError("ne doit pas installer")
+
+    monkeypatch.setattr("sync_runner.install_profile_refs", boom)
+    _answers(monkeypatch, "1", "o", "n")
+    assert cli.run_cli("htop", refresh=False, dry_run=False) == 0
+    assert "htop" in packages_nix.read_text(encoding="utf-8")
+
+
+def test_cli_add_install_ko_ajout_garde(
+    packages_nix: Path,
+    fake_index: None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Échec d'install : message visible, mais l'ajout reste (code 0)."""
+    monkeypatch.setattr("cli.is_nixos", lambda: False)
+    monkeypatch.setattr("sync_runner.install_profile_refs", lambda refs: 1)
+    _answers(monkeypatch, "1", "o", "o")
+    assert cli.run_cli("htop", refresh=False, dry_run=False) == 0
+    assert "htop" in packages_nix.read_text(encoding="utf-8")
+    assert "échoué" in capsys.readouterr().err

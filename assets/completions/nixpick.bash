@@ -8,7 +8,7 @@ _nixpick() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local cmds="doctor rebuild fix-git"
+    local cmds="doctor rebuild fix-git sync"
     local global_opts="--version --print-config --refresh --dry-run --transparent --opaque --tui --rofi --build-index-only --remove --list-installed --json --undo --why -h --help"
 
     # Les options à valeur n'appellent aucune complétion.
@@ -20,7 +20,7 @@ _nixpick() {
     sub=""
     for w in "${COMP_WORDS[@]:1}"; do
         case "$w" in
-            doctor|rebuild|fix-git) sub="$w"; break ;;
+            doctor|rebuild|fix-git|sync) sub="$w"; break ;;
         esac
     done
 
@@ -29,6 +29,7 @@ _nixpick() {
         doctor) opts="--json -h --help" ;;
         rebuild) opts="-y --yes --terminal --dry-run -h --help" ;;
         fix-git) opts="-y --yes --dry-run -h --help" ;;
+        sync) opts="-y --yes --dry-run -h --help" ;;
         *) opts="$cmds $global_opts" ;;
     esac
     # shellcheck disable=SC2207

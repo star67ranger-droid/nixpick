@@ -16,6 +16,7 @@ ROFI_FIX_GIT = "󰊢 Corriger Git (fix-git)"
 
 
 ISSUES_URL = "https://github.com/star67ranger-droid/nixpick/issues"
+ROFI_SYNC_NOW = "Installer via sync"
 
 
 def cli_cancelled() -> str:

@@ -28,7 +28,9 @@ from messages import (
     ROFI_CONFIRM_ADD,
     ROFI_CONFIRM_REMOVE,
     ROFI_FIX_GIT,
+    ROFI_REBUILD_LATER,
     ROFI_REBUILD_NOW,
+    ROFI_SYNC_NOW,
     diff_preview_text,
     notify_add_failure,
     notify_dry_run_add,
@@ -124,8 +126,26 @@ def _rofi_preview(message: str) -> None:
 
 
 def _offer_rebuild() -> None:
+    from config import is_nixos
     from fix_git_runner import run_fix_git
     from flake_git import check_flake_untracked, rebuild_preflight_notify_body
+    from sync_runner import run_sync
+
+    if not is_nixos():
+        answer = _rofi(
+            "Installer les paquets listés dans ton profil ?",
+            [ROFI_SYNC_NOW, ROFI_REBUILD_LATER],
+            max_lines=2,
+        )
+        if answer != ROFI_SYNC_NOW:
+            return
+        code = run_sync(yes=True)
+        if code != 0:
+            _notify(
+                "nixpick — sync",
+                "La sync a échoué.\nLance dans un terminal : nixpick sync",
+            )
+        return
 
     def _exec_rebuild() -> None:
         code = run_rebuild(yes=True, in_terminal=True)

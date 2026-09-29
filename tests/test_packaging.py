@@ -21,6 +21,7 @@ ROOT_MODULES = [
     "messages",
     "doctor",
     "rebuild_runner",
+    "sync_runner",
     "flake_git",
     "fix_git_runner",
     "flake_lock",

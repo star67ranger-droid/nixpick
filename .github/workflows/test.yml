@@ -48,4 +48,4 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install "mypy==1.18.*"
-      - run: mypy engine.py
+      - run: mypy engine.py sync_runner.py

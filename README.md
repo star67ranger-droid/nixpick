@@ -99,6 +99,8 @@ nixpick --print-config
 | `nixpick rebuild` | Lance `rebuild_command` (confirmation interactive) |
 | `nixpick rebuild -y` | Rebuild sans redemander (scripts) |
 | `nixpick rebuild -y --terminal` | Ouvre **kitty** / **foot** pour `sudo` et la sortie |
+| `nixpick sync` | Hors NixOS : installe dans le profil les paquets listés mais absents (jamais de retrait) |
+| `nixpick sync -y` | Idem sans redemander · `--dry-run` affiche la commande |
 | `nixpick doctor` | Fichier packages, cache index, verrou, **Git flake (fichiers suivis)**, flake.lock nixpick, outils, rebuild |
 | `nixpick doctor --json` | Même diagnostic en JSON |
 | `nixpick --why <attr>` | Indique si l’attribut est dans le fichier configuré (ligne approximative) |
@@ -154,7 +156,10 @@ Thèmes : `assets/rofi/` dans le dépôt ; nixpick régénère `~/.config/nixpic
   (`/etc/nixos` absent) : repli sur `~/.config/nixpick/packages.nix`, créé
   (squelette) au premier ajout — plus d'erreur « introuvable », le message
   de succès l'indique. Le rebuild reste NixOS-only (`NIXPICK_PACKAGES_FILE`
-  et `NIXPICK_REBUILD_COMMAND` forcent toujours ces valeurs).
+  et `NIXPICK_REBUILD_COMMAND`   forcent toujours ces valeurs).
+- Appliquer hors NixOS : `nixpick sync` (= `nix profile install nixpkgs#…`
+  pour les listés absents du profil) ; proposé automatiquement après
+  chaque ajout CLI, suggéré dans la TUI et Rofi au lieu du rebuild.
 
 - Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours). Prérequis : `nix-env` dans le PATH (`nixpick doctor`).
 - Descriptions : `nix eval` à la demande pour les résultats affichés
