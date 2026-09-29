@@ -187,4 +187,4 @@ MIT — voir [LICENSE](LICENSE).
 
 ## Contribuer
 
-Issues et PR bienvenues. Garde le scope : recherche rapide + édition sûre d’un fichier Nix déclaratif.
+Issues et PR bienvenues : https://github.com/star67ranger-droid/nixpick/issues. Garde le scope : recherche rapide + édition sûre d’un fichier Nix déclaratif.

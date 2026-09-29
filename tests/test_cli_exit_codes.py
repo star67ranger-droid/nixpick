@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from config import reset_settings_cache
+from messages import ISSUES_URL
 from nixpick import main
 
 
@@ -42,3 +43,19 @@ def test_rofi_sans_rofi_renvoie_1(
     monkeypatch.setattr("sys.argv", ["nixpick", "--rofi"])
     assert main() == 1
     assert "rofi introuvable" in capsys.readouterr().err
+
+
+def test_erreur_inattendue_renvoie_1_avec_url(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Crash inattendu : traceback + URL de signalement, pas de propagation."""
+
+    def boom(*args: object, **kwargs: object) -> int:
+        raise RuntimeError("panne simulée")
+
+    monkeypatch.setattr("nixpick.run_doctor", boom)
+    monkeypatch.setattr("sys.argv", ["nixpick", "doctor"])
+    assert main() == 1
+    err = capsys.readouterr().err
+    assert "panne simulée" in err
+    assert ISSUES_URL in err

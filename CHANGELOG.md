@@ -3,6 +3,7 @@
 ## non publié
 
 - **Hors NixOS** : sans `/etc/nixos`, la cible devient `~/.config/nixpick/packages.nix`, créée (squelette à l'ancre configurée) au premier ajout — `plan_remove` ne crée rien, NixOS inchangé (`tests/test_non_nixos.py`)
+- **Signalement de bugs** : toute erreur inattendue du CLI affiche le traceback + l'URL des issues GitHub (code 1, `Ctrl+C` → 130) ; toast d'échec d'index et README pointent vers les issues
 - **Complétions shell** : `assets/completions/` (bash, zsh, fish), installées par le flake (`installShellCompletion`) ; synchro avec le CLI testée (`tests/test_completions.py`)
 - **Typage** : `mypy engine.py` vert en CI (4 `None.get` potentiels corrigés dans `config.py` / `theme.py`)
 - **Coverage** : `--cov-fail-under=70` en CI (plancher mesuré 71) + 8 tests du mode CLI interactif (`tests/test_cli.py`, `cli.py` 8 % → 61 %)

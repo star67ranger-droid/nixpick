@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import traceback
 
 from cli import run_cli, run_cli_remove
 from config import __version__, get_settings
@@ -28,12 +29,27 @@ from engine import (
     undo_last_write,
 )
 from fix_git_runner import run_fix_git
+from messages import ISSUES_URL
 from rebuild_runner import run_rebuild
 from rofi_mode import run_rofi
 from tui import run_tui
 
 
 def main() -> int:
+    """Point d'entrée : les erreurs inattendues affichent un traceback ET
+    l'URL de signalement (sinon l'utilisateur ne sait pas quoi en faire)."""
+    try:
+        return _run()
+    except KeyboardInterrupt:
+        print("Interrompu.", file=sys.stderr)
+        return 130
+    except Exception:  # noqa: BLE001 — garde-fou : toute erreur inattendue est signalée
+        traceback.print_exc()
+        print(f"\nSignale ce bug : {ISSUES_URL}", file=sys.stderr)
+        return 1
+
+
+def _run() -> int:
     parser = argparse.ArgumentParser(
         prog="nixpick",
         description="Cherche un paquet nixpkgs et modifie environment.systemPackages.",

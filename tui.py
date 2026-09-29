@@ -74,6 +74,7 @@ from engine import (  # noqa: E402
     plan_remove,
     search_index,
 )
+from messages import ISSUES_URL  # noqa: E402
 from theme import (  # noqa: E402
     TuiColors,
     get_color_palette,
@@ -436,7 +437,7 @@ class TuiApp:
         self.status.set("")
         self.index_failed.set(True)
         self.rev_bump()
-        self.notify(message, level="error")
+        self.notify(f"{message} — À signaler : {ISSUES_URL}", level="error")
 
     def _on_index_ready(self, pkg_index: PackageIndex) -> None:
         self.pkg_index = pkg_index

@@ -15,6 +15,9 @@ ROFI_REBUILD_LATER = "Plus tard"
 ROFI_FIX_GIT = "󰊢 Corriger Git (fix-git)"
 
 
+ISSUES_URL = "https://github.com/star67ranger-droid/nixpick/issues"
+
+
 def cli_cancelled() -> str:
     return "Abandonné."
 
