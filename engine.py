@@ -60,7 +60,9 @@ def run(cmd: list[str], timeout: int) -> str:
             cmd, capture_output=True, text=True, timeout=timeout, check=True
         ).stdout
     except FileNotFoundError:
-        raise NixCommandError(f"{cmd[0]} est introuvable. Ce script attend NixOS.")
+        raise NixCommandError(
+            f"{cmd[0]} est introuvable (Nix requis dans le PATH)."
+        )
     except subprocess.TimeoutExpired:
         raise NixCommandError(f"{cmd[0]} a dépassé {timeout} s.")
     except subprocess.CalledProcessError as err:
