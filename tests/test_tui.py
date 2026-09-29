@@ -7,6 +7,7 @@ un index factice : aucune requête nix, aucune écriture de config.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -15,7 +16,7 @@ from typing import Any
 import pytest
 
 import tui
-from engine import AddPlan
+from engine import AddPlan, NixCommandError
 
 
 class FakeDescCache:
@@ -475,6 +476,22 @@ def test_detail_longue_description_ne_chevauche_pas(tui_env: dict[str, Any]) -> 
 
 
 # ── audit 2 : index en échec, plan, terminal petit, coller, footer ─────────
+
+
+@pytest.mark.parametrize(
+    ("exc", "fragment"),
+    [
+        (json.JSONDecodeError("msg", "doc", 0), "index illisible"),
+        (OSError(13, "Permission denied"), "index inaccessible"),
+        (NixCommandError("nix-env absent"), "nix-env absent"),
+        (RuntimeError("boom"), "chargement de l'index impossible"),
+    ],
+)
+def test_index_error_message_couvre_les_cas(
+    exc: BaseException, fragment: str
+) -> None:
+    message = tui._index_error_message(exc)
+    assert fragment in message
 
 
 def test_index_en_echec_ne_bloque_pas_la_tui(

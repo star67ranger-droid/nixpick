@@ -45,6 +45,17 @@ def test_rofi_sans_rofi_renvoie_1(
     assert "rofi introuvable" in capsys.readouterr().err
 
 
+def test_keyboard_interrupt_renvoie_130(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def interrupt(*args: object, **kwargs: object) -> int:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("nixpick._run", interrupt)
+    assert main() == 130
+    assert "Interrompu" in capsys.readouterr().err
+
+
 def test_erreur_inattendue_renvoie_1_avec_url(
     clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
