@@ -91,7 +91,11 @@ def run_sync(*, yes: bool = False, dry_run: bool = False) -> int:
         print(f"nix profile list : {err}", file=sys.stderr)
         return 1
     if proc.returncode != 0:
-        print("Impossible de lire le profil Nix.", file=sys.stderr)
+        detail = (proc.stderr or proc.stdout or "").strip()
+        msg = "Impossible de lire le profil Nix."
+        if detail:
+            msg = f"{msg} {detail[:400]}"
+        print(msg, file=sys.stderr)
         return 1
 
     refs = missing_refs(listed, parse_profile_list(proc.stdout))

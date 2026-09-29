@@ -45,6 +45,22 @@ def test_rofi_sans_rofi_renvoie_1(
     assert "rofi introuvable" in capsys.readouterr().err
 
 
+def test_sync_delegue_a_run_sync(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, bool] = {}
+
+    def fake_sync(*, yes: bool = False, dry_run: bool = False) -> int:
+        seen["yes"] = yes
+        seen["dry_run"] = dry_run
+        return 0
+
+    monkeypatch.setattr("nixpick.run_sync", fake_sync)
+    monkeypatch.setattr("sys.argv", ["nixpick", "sync", "--yes", "--dry-run"])
+    assert main() == 0
+    assert seen == {"yes": True, "dry_run": True}
+
+
 def test_erreur_inattendue_renvoie_1_avec_url(
     clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

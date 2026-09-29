@@ -96,9 +96,34 @@ def test_sync_liste_vide(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls == []
 
 
-def test_sync_profil_illisible(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_nix(monkeypatch, profile_code=1)
+def test_sync_profil_illisible(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_run(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        if argv[:3] == ["nix", "profile", "list"]:
+            return SimpleNamespace(
+                returncode=1, stdout="", stderr="profil corrompu"
+            )
+        raise AssertionError(f"appel inattendu : {argv}")
+
+    _patch_nix(monkeypatch)
+    monkeypatch.setattr("subprocess.run", fake_run)
     assert run_sync() == 1
+    assert "profil corrompu" in capsys.readouterr().err
+
+
+def test_sync_profile_list_os_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        if argv[:3] == ["nix", "profile", "list"]:
+            raise OSError("nix absent")
+        raise AssertionError(f"appel inattendu : {argv}")
+
+    _patch_nix(monkeypatch)
+    monkeypatch.setattr("subprocess.run", boom)
+    assert run_sync() == 1
+    assert "nix absent" in capsys.readouterr().err
 
 
 def test_sync_a_jour(monkeypatch: pytest.MonkeyPatch) -> None:
