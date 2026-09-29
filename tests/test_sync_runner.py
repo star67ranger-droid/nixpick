@@ -41,6 +41,10 @@ def test_is_installed() -> None:
     # ".htop" exige le point : pas de faux positif sur préfixe.
     assert not is_installed("top", entries)
     assert not is_installed("ht", entries)
+    # Couverture par flake attribute seul (sans entrée Name).
+    assert is_installed(
+        "htop", [{"flake_attribute": "legacyPackages.x86_64-linux.htop"}]
+    )
 
 
 def test_missing_refs() -> None:
@@ -212,3 +216,52 @@ def test_install_profile_refs_erreur_os(
     monkeypatch.setattr("subprocess.run", boom)
     assert sync_runner.install_profile_refs(["nixpkgs#htop"]) == 1
     assert "pas de nix" in capsys.readouterr().err
+
+
+def test_upgrade_profile_refs_erreur_os(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        raise OSError("upgrade kaput")
+
+    monkeypatch.setattr("subprocess.run", boom)
+    assert sync_runner.upgrade_profile_refs(["legacyPackages.x86_64-linux.htop"]) == 1
+    assert "upgrade kaput" in capsys.readouterr().err
+
+
+def test_sync_liste_profil_os_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boom(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        if argv[:3] == ["nix", "profile", "list"]:
+            raise OSError("list down")
+        raise AssertionError(argv)
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/nix")
+    monkeypatch.setattr(
+        "sync_runner.list_installed_attrs", lambda: {"htop"}
+    )
+    monkeypatch.setattr("subprocess.run", boom)
+    assert run_sync() == 1
+    assert "list down" in capsys.readouterr().err
+
+
+def test_sync_upgrade_seul_confirme(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _patch_nix(monkeypatch, listed=["htop"], answers=["y"])
+    assert run_sync(upgrade=True) == 0
+    assert calls == [
+        ["nix", "profile", "upgrade", "legacyPackages.x86_64-linux.htop"]
+    ]
+
+
+def test_sync_prompt_interrompu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def eof(_p: str = "") -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", eof)
+    _patch_nix(monkeypatch, answers=None)
+    assert run_sync() == 1
