@@ -52,6 +52,39 @@ def missing_refs(
     return [f"nixpkgs#{attr}" for attr in listed if not is_installed(attr, entries)]
 
 
+def upgradeable_refs(
+    listed: list[str], entries: list[dict[str, str]]
+) -> list[str]:
+    """Flake attributes installés correspondant à la liste (pour upgrade).
+
+    Chemin complet (`legacyPackages.x.htop`) : `nix profile upgrade`
+    l'accepte et met à jour sur place, quelle que soit l'origine.
+    """
+    refs: list[str] = []
+    for attr in listed:
+        for entry in entries:
+            flake_attr = entry.get("flake_attribute", "")
+            if flake_attr.endswith(f".{attr}") or entry.get("name") == attr:
+                if flake_attr and flake_attr not in refs:
+                    refs.append(flake_attr)
+                break
+    return refs
+
+
+def upgrade_profile_refs(refs: list[str]) -> int:
+    """`nix profile upgrade` sur les refs. Retourne le code de sortie."""
+    argv = ["nix", "profile", "upgrade", *refs]
+    try:
+        proc = subprocess.run(argv, check=False, timeout=INSTALL_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as err:
+        print(t("sync.upgrade_failed_os", err=err), file=sys.stderr)
+        return 1
+    code = int(proc.returncode or 0)
+    if code != 0:
+        print(t("sync.upgrade_failed", code=code), file=sys.stderr)
+    return code
+
+
 def install_profile_refs(refs: list[str]) -> int:
     """`nix profile install` sur les refs. Retourne le code de sortie."""
     argv = ["nix", "profile", "install", *refs]
@@ -69,8 +102,12 @@ def install_profile_refs(refs: list[str]) -> int:
     return code
 
 
-def run_sync(*, yes: bool = False, dry_run: bool = False) -> int:
-    """Installe les paquets listés absents du profil. Jamais de retrait."""
+def run_sync(*, yes: bool = False, dry_run: bool = False, upgrade: bool = False) -> int:
+    """Installe les paquets listés absents du profil (+ upgrade ciblé).
+
+    Jamais de retrait. L'upgrade ne touche que les listés déjà installés,
+    par leur flake attribute complet (mise à jour sur place).
+    """
     if shutil.which("nix") is None:
         print(t("sync.no_nix"), file=sys.stderr)
         return 1
@@ -98,32 +135,52 @@ def run_sync(*, yes: bool = False, dry_run: bool = False) -> int:
             print(tail, file=sys.stderr)
         return 1
 
-    refs = missing_refs(listed, parse_profile_list(proc.stdout))
-    if not refs:
+    entries = parse_profile_list(proc.stdout)
+    refs = missing_refs(listed, entries)
+    up_refs = upgradeable_refs(listed, entries) if upgrade else []
+    if not refs and not up_refs:
         print(t("sync.uptodate"))
         return 0
 
-    display_cmd = shlex.join(["nix", "profile", "install", *refs])
+    install_cmd = shlex.join(["nix", "profile", "install", *refs]) if refs else ""
+    upgrade_cmd = shlex.join(["nix", "profile", "upgrade", *up_refs]) if up_refs else ""
     if dry_run:
-        print(f"[dry-run] {display_cmd}")
+        if install_cmd:
+            print(f"[dry-run] {install_cmd}")
+        if upgrade_cmd:
+            print(f"[dry-run] {upgrade_cmd}")
         return 0
 
     if not yes:
         if not sys.stdin.isatty():
             print(
-                t("sync.no_tty", cmd=display_cmd),
+                t("sync.no_tty", cmd=install_cmd or upgrade_cmd),
                 file=sys.stderr,
             )
             return 1
+        if install_cmd and upgrade_cmd:
+            prompt = t("sync.confirm_both", install=install_cmd, upgrade=upgrade_cmd)
+        elif upgrade_cmd:
+            prompt = t("sync.confirm_upgrade", cmd=upgrade_cmd)
+        else:
+            prompt = t("sync.confirm", cmd=install_cmd)
         try:
-            answer = input(t("sync.confirm", cmd=display_cmd)).strip().lower()
+            answer = input(prompt).strip().lower()
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
             return 1
         if not is_affirmative(answer):
             return 0
 
-    code = install_profile_refs(refs)
-    if code == 0:
-        print(t("sync.installed", refs=", ".join(refs)))
-    return code
+    if refs:
+        code = install_profile_refs(refs)
+        if code == 0:
+            print(t("sync.installed", refs=", ".join(refs)))
+        if code != 0:
+            return code
+    if up_refs:
+        ucode = upgrade_profile_refs(up_refs)
+        if ucode == 0:
+            print(t("sync.upgraded", refs=", ".join(up_refs)))
+        return ucode
+    return 0

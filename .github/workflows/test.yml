@@ -22,7 +22,7 @@ jobs:
           git config --global user.email "nixpick-ci@localhost"
           git config --global user.name "nixpick-ci"
       - run: pip install -e ".[dev]"
-      - run: pytest -q --cov=. --cov-report=term-missing --cov-fail-under=73
+      - run: pytest -q --cov=. --cov-report=term-missing --cov-fail-under=74
 
   flake:
     runs-on: ubuntu-latest

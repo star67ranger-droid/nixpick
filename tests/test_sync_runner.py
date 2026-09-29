@@ -55,6 +55,7 @@ def _patch_nix(
     profile_stdout: str = PROFILE_SAMPLE,
     profile_code: int = 0,
     install_code: int = 0,
+    upgrade_code: int = 0,
     have_nix: bool = True,
     tty: bool = True,
     answers: list[str] | None = None,
@@ -81,6 +82,9 @@ def _patch_nix(
         if argv[:3] == ["nix", "profile", "install"]:
             calls.append(argv)
             return SimpleNamespace(returncode=install_code, stdout="")
+        if argv[:3] == ["nix", "profile", "upgrade"]:
+            calls.append(argv)
+            return SimpleNamespace(returncode=upgrade_code, stdout="")
         raise AssertionError(f"appel inattendu : {argv}")
 
     monkeypatch.setattr("subprocess.run", fake_run)
@@ -155,6 +159,48 @@ def test_sync_yes_sans_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_nix(monkeypatch, tty=False)
     assert run_sync(yes=True) == 0
     assert calls == [["nix", "profile", "install", "nixpkgs#firefox"]]
+
+
+def test_upgradeable_refs() -> None:
+    from sync_runner import upgradeable_refs
+
+    entries = parse_profile_list(PROFILE_SAMPLE)
+    assert upgradeable_refs(["htop", "firefox"], entries) == [
+        "legacyPackages.x86_64-linux.htop"
+    ]
+    assert upgradeable_refs(["firefox"], entries) == []
+    # Entrée sans flake attribute : ignorée (pas de cible fiable).
+    assert upgradeable_refs(["x"], [{"name": "x"}]) == []
+
+
+def test_sync_upgrade_installe_puis_met_a_jour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _patch_nix(monkeypatch, answers=["o"])
+    assert run_sync(upgrade=True) == 0
+    assert calls == [
+        ["nix", "profile", "install", "nixpkgs#firefox"],
+        ["nix", "profile", "upgrade", "legacyPackages.x86_64-linux.htop"],
+    ]
+
+
+def test_sync_upgrade_dry_run(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls = _patch_nix(monkeypatch)
+    assert run_sync(upgrade=True, dry_run=True) == 0
+    assert calls == []
+    out = capsys.readouterr().out
+    assert "nix profile install 'nixpkgs#firefox'" in out
+    assert "nix profile upgrade legacyPackages.x86_64-linux.htop" in out
+
+
+def test_sync_upgrade_echec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _patch_nix(monkeypatch, answers=["o"], upgrade_code=1)
+    assert run_sync(upgrade=True) == 1
+    assert calls[-1][:3] == ["nix", "profile", "upgrade"]
 
 
 def test_install_profile_refs_erreur_os(

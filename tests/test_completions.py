@@ -57,3 +57,8 @@ def test_completions_couvrent_le_cli(
     for sub in subcommands:
         for name, body in bodies.items():
             assert sub in body, f"sous-commande {sub} absente de {name}"
+    # --print vs --print-config : le test substring ci-dessus ne distingue
+    # pas les préfixes — vérification explicite, avec prise de valeur.
+    assert "--print " in bodies["nixpick.bash"]
+    assert "'--print[" in bodies["_nixpick"]
+    assert "-l print " in bodies["nixpick.fish"]

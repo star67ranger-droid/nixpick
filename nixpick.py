@@ -26,7 +26,9 @@ from engine import (
     build_index,
     index_age_days,
     list_installed_attrs,
+    load_index,
     packages_file,
+    search,
     undo_last_write,
 )
 from errors import explain_error
@@ -127,6 +129,11 @@ def _run() -> int:
         action="store_true",
         help=t("app.help_sync_dry"),
     )
+    sync_parser.add_argument(
+        "--upgrade",
+        action="store_true",
+        help=t("app.help_sync_upgrade"),
+    )
     parser.add_argument(
         "--print-config",
         action="store_true",
@@ -197,6 +204,12 @@ def _run() -> int:
         metavar="ATTR",
         help=t("app.help_why"),
     )
+    parser.add_argument(
+        "--print",
+        dest="print_term",
+        metavar="TERM",
+        help=t("app.help_print"),
+    )
     args = parser.parse_args()
 
     # SEC-01 : une config illisible/invalid ne doit pas être remplacée en
@@ -221,8 +234,13 @@ def _run() -> int:
         return run_fix_git(yes=args.yes, dry_run=args.dry_run)
 
     if args.command == "sync":
-        return run_sync(yes=args.yes, dry_run=args.dry_run)
+        return run_sync(yes=args.yes, dry_run=args.dry_run, upgrade=args.upgrade)
 
+    return _run_flags(args)
+
+
+def _run_flags(args: argparse.Namespace) -> int:
+    """Options globales (hors sous-commandes) : retours directs puis TUI/CLI."""
     if args.print_config:
         s = get_settings()
         print(f"packages_file={s.packages_file}")
@@ -233,6 +251,20 @@ def _run() -> int:
 
     if args.why is not None:
         return run_why(args.why)
+
+    if args.print_term is not None:
+        # Composable : seul l'attribut sur stdout (scripts, agents, shell).
+        try:
+            index = load_index(refresh=args.refresh)
+        except NixCommandError as err:
+            print(t("app.error", err=err), file=sys.stderr)
+            return 1
+        hits = search(index, args.print_term, limit=1)
+        if not hits:
+            print(t("cli.nothing_found", term=args.print_term), file=sys.stderr)
+            return 1
+        print(hits[0][0])
+        return 0
 
     if args.list_installed:
         if args.json:

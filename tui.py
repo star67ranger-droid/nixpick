@@ -22,6 +22,8 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -367,6 +369,8 @@ class TuiApp:
         self.modal: Signal = Signal(None)
         self.toast: Signal = Signal(None)
         self.toast_level = Signal("info")
+        # panier multi-sélection : attr -> description (commentaire à l'ajout)
+        self.basket: dict[str, str] = {}
         # menu paramètres : sélection, édition du chemin
         self.settings_choice = 0
         self.settings_editing = False
@@ -884,8 +888,56 @@ class TuiApp:
             self._commit_add(payload["plan"], payload.get("row"))
         elif kind == "remove":
             self._commit_remove(payload["plan"], payload.get("row"))
+        elif kind == "add_multi":
+            self._commit_basket(payload["attrs"])
 
     # ── actions sur la config ──────────────────────────────────────────────
+
+    @staticmethod
+    def _clipboard_argv() -> list[str] | None:
+        if shutil.which("wl-copy"):
+            return ["wl-copy"]
+        if shutil.which("xclip"):
+            return ["xclip", "-selection", "clipboard"]
+        if shutil.which("xsel"):
+            return ["xsel", "--clipboard", "--input"]
+        return None
+
+    def action_yank(self) -> None:
+        row = self.current_row()
+        if row is None:
+            return
+        argv = self._clipboard_argv()
+        if argv is None:
+            self.notify(t("tui.no_clipboard"), level="warning", timeout=3)
+            return
+        try:
+            subprocess.run(
+                argv, input=row.attr, capture_output=True, text=True,
+                timeout=10, check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            self.notify(t("tui.no_clipboard"), level="warning", timeout=3)
+            return
+        self.notify(t("tui.yanked", attr=row.attr), timeout=2)
+
+    def action_toggle_basket(self) -> None:
+        row = self.current_row()
+        if row is None:
+            return
+        if row.attr in self.basket:
+            del self.basket[row.attr]
+            self.notify(
+                t("tui.basket_removed", attr=row.attr, n=len(self.basket)),
+                timeout=2,
+            )
+        else:
+            self.basket[row.attr] = row.description
+            self.notify(
+                t("tui.basket_added", attr=row.attr, n=len(self.basket)),
+                timeout=2,
+            )
+        self.rev_bump()
 
     def action_remove(self) -> None:
         row = self.current_row()
@@ -905,6 +957,9 @@ class TuiApp:
         self._open_modal({"kind": "remove", "plan": plan, "row": row})
 
     def action_install(self) -> None:
+        if self.basket:
+            self._open_modal({"kind": "add_multi", "attrs": sorted(self.basket)})
+            return
         row = self.current_row()
         if row is None:
             return
@@ -920,6 +975,44 @@ class TuiApp:
             self.notify(plan.message, level="warning")
             return
         self._open_modal({"kind": "add", "plan": plan, "row": row})
+
+    def _commit_basket(self, attrs: list[str]) -> None:
+        if self.dry_run.peek():
+            self.notify(t("tui.basket_dry", n=len(attrs)), timeout=4)
+            self.basket.clear()
+            self.rev_bump()
+            return
+        live = {row.attr: row.description for row in self.rows.peek()}
+        ok = skipped = failed = 0
+        first_err = ""
+        for attr in attrs:
+            plan = plan_add(attr, live.get(attr) or self.basket.get(attr, ""))
+            if isinstance(plan, AddFailure):
+                if plan.outcome.name == "ALREADY_LISTED":
+                    skipped += 1
+                else:
+                    failed += 1
+                    first_err = first_err or plan.message
+                continue
+            try:
+                commit_add(plan, dry_run=False)
+            except (PermissionError, LookupError, NixSyntaxError) as err:
+                failed += 1
+                first_err = first_err or str(err)
+                continue
+            ok += 1
+        self.basket.clear()
+        self.installed = list_installed_attrs()
+        self._rebuild_list()
+        self.rev_bump()
+        msg = t("tui.basket_done", n=ok)
+        if skipped:
+            msg += t("tui.basket_skipped", n=skipped)
+        if failed:
+            msg += t("tui.basket_failed", n=failed, msg=first_err)
+            self.notify(msg, level="error", timeout=8)
+        else:
+            self.notify(msg, timeout=6)
 
     def _commit_add(self, plan: AddPlan, row: ResultRow | None) -> None:
         if self.dry_run.peek():
@@ -1073,6 +1166,8 @@ class TuiApp:
             "k": lambda: self.move(-1),
             "q": self.quit,
             "x": self.action_remove,
+            "y": self.action_yank,
+            " ": self.action_toggle_basket,
             "delete": self.action_remove,
             "l": self.action_toggle_catalog,
             "d": self.action_toggle_dry_run,
@@ -1228,7 +1323,12 @@ class TuiApp:
             selected = index == current
             installed = row.attr in self.installed
             marker = "▸ " if selected else "  "
-            dot = "● " if installed else "  "
+            if installed:
+                dot, dot_color = "● ", c.success
+            elif row.attr in self.basket:
+                dot, dot_color = "+ ", c.accent
+            else:
+                dot, dot_color = "  ", c.text_muted
             name = _ellipsis(row.attr, attr_w)
             name += " " * max(0, attr_w - display_width(name))
             version = _ellipsis(row.version, _VERSION_COL - 1)
@@ -1236,7 +1336,7 @@ class TuiApp:
             boxes.append(
                 _row(
                     (marker, c.primary if selected else c.text_muted, selected),
-                    (dot, c.success if installed else c.text_muted, False),
+                    (dot, dot_color, False),
                     (name, c.primary if selected else c.text, selected),
                     (version, c.text_muted, False),
                     background_color=c.list_highlight_bg if selected else None,
@@ -1397,6 +1497,8 @@ class TuiApp:
             inner = self._help_box(c, width, height)
         elif payload.get("kind") == "settings":
             inner = self._settings_box(c, width, height)
+        elif payload.get("kind") == "add_multi":
+            inner = self._confirm_multi_box(payload["attrs"], c, width, height)
         else:
             inner = self._confirm_box(payload, c, width, height)
         return [
@@ -1509,6 +1611,55 @@ class TuiApp:
             flex_shrink=1,
         )
 
+    @staticmethod
+    def _confirm_keys_row(c: TuiColors) -> Any:
+        return _row(
+            ("y", c.success, True),
+            (t("tui.confirm_or"), c.text_muted, False),
+            ("↵", c.success, True),
+            (f"  {t('tui.confirm_yes')}     ", c.text_muted, False),
+            ("n", c.danger, True),
+            (t("tui.confirm_or"), c.text_muted, False),
+            ("esc", c.danger, True),
+            (f"  {t('tui.confirm_no')}", c.text_muted, False),
+        )
+
+    def _confirm_multi_box(
+        self, attrs: list[str], c: TuiColors, width: int, height: int
+    ) -> Box:
+        box_width = min(78, max(40, width - 4))
+        content_width = max(20, box_width - 4)
+        children: list[Any] = [
+            _line(t("tui.basket_title", n=len(attrs)), c.text, bold=True),
+            _line(""),
+        ]
+        for attr in attrs[:12]:
+            children.append(_line(_ellipsis(attr, content_width), c.primary, bold=True))
+        if len(attrs) > 12:
+            children.append(_line(t("tui.basket_more", n=len(attrs) - 12), c.text_muted))
+        children.append(_line(""))
+        mode = (
+            t("tui.confirm_dry")
+            if self.dry_run.peek()
+            else t("tui.confirm_add_mode")
+        )
+        children.append(_line(mode, c.warning))
+        children.append(_line(""))
+        children.append(self._confirm_keys_row(c))
+        return Box(
+            *children,
+            width=box_width,
+            background_color=c.surface_elevated,
+            border=True,
+            border_style="single",
+            border_color=c.text_muted,
+            padding_x=2,
+            padding_y=1,
+            max_height=max(10, height - 2),
+            overflow="hidden",
+            flex_shrink=1,
+        )
+
     def _confirm_box(
         self, payload: dict[str, Any], c: TuiColors, width: int, height: int
     ) -> Box:
@@ -1562,18 +1713,7 @@ class TuiApp:
             )
         )
         children.append(_line(""))
-        children.append(
-            _row(
-                ("y", c.success, True),
-                (t("tui.confirm_or"), c.text_muted, False),
-                ("↵", c.success, True),
-                (f"  {t('tui.confirm_yes')}     ", c.text_muted, False),
-                ("n", c.danger, True),
-                (t("tui.confirm_or"), c.text_muted, False),
-                ("esc", c.danger, True),
-                (f"  {t('tui.confirm_no')}", c.text_muted, False),
-            )
-        )
+        children.append(self._confirm_keys_row(c))
 
         return Box(
             *children,

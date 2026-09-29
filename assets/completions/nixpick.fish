@@ -23,6 +23,7 @@ complete -c nixpick -f -n __fish_use_subcommand -l list-installed -d "liste les 
 complete -c nixpick -f -n __fish_use_subcommand -l json -d "avec --list-installed : sortie JSON"
 complete -c nixpick -f -n __fish_use_subcommand -l undo -d "restaure packages.nix depuis la dernière sauvegarde"
 complete -c nixpick -f -n __fish_use_subcommand -l why -r -d "dit si un attribut est dans packages.nix"
+complete -c nixpick -f -n __fish_use_subcommand -l print -r -d "affiche le meilleur attr sur stdout"
 complete -c nixpick -f -n __fish_use_subcommand -s h -l help -d "affiche l'aide"
 
 # Options par sous-commande.
@@ -37,4 +38,5 @@ complete -c nixpick -f -n "__fish_seen_subcommand_from fix-git" -l dry-run -d "a
 complete -c nixpick -f -n "__fish_seen_subcommand_from fix-git" -s h -l help -d "affiche l'aide"
 complete -c nixpick -f -n "__fish_seen_subcommand_from sync" -s y -l yes -d "sans demander confirmation"
 complete -c nixpick -f -n "__fish_seen_subcommand_from sync" -l dry-run -d "affiche la commande nix sans l'exécuter"
+complete -c nixpick -f -n "__fish_seen_subcommand_from sync" -l upgrade -d "met aussi à jour les listés déjà installés"
 complete -c nixpick -f -n "__fish_seen_subcommand_from sync" -s h -l help -d "affiche l'aide"

@@ -239,6 +239,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "app.help_fix_git_dry": "affiche la commande git sans l'exécuter",
         "app.help_sync": "installe dans le profil Nix les paquets listés mais absents (hors NixOS)",
         "app.help_sync_dry": "affiche la commande nix sans l'exécuter",
+        "app.help_sync_upgrade": "met aussi à jour les listés déjà installés",
         "app.help_print_config": "affiche le fichier cible et la commande rebuild puis quitte",
         "app.help_term": "recherche en mode CLI (sinon ouvre la TUI)",
         "app.help_refresh": "reconstruit l'index nixpkgs au démarrage",
@@ -253,6 +254,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "app.help_list_json": "avec --list-installed : une ligne JSON (attrs, count, packages_file, index_age_days)",
         "app.help_undo": "restaure packages.nix depuis la dernière sauvegarde (sans rebuild)",
         "app.help_why": "indique si un attribut est dans le fichier packages configuré",
+        "app.help_print": "affiche le meilleur attr sur stdout (composable : scripts, agents)",
         "app.remove_needs_term": (
             "nixpick : --remove exige un terme "
             "(ex. nixpick --remove firefox)."
@@ -356,6 +358,15 @@ STRINGS: dict[str, dict[str, str]] = {
             "Utilise : nixpick sync --yes"
         ),
         "sync.confirm": "Installer dans le profil ?\n  {cmd}\n[o/N] ",
+        "sync.confirm_upgrade": "Mettre à jour dans le profil ?\n  {cmd}\n[o/N] ",
+        "sync.confirm_both": (
+            "Installer et mettre à jour dans le profil ?\n"
+            "  {install}\n"
+            "  {upgrade}\n[o/N] "
+        ),
+        "sync.upgraded": "Profil mis à jour : {refs}",
+        "sync.upgrade_failed": "nix profile upgrade a quitté avec le code {code}.",
+        "sync.upgrade_failed_os": "nix profile upgrade : {err}",
         "sync.installed": "Installé : {refs}",
         # ── fix_git_runner.py ────────────────────────────────
         "git.no_flake": (
@@ -512,6 +523,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "tui.confirm_yes": "confirmer",
         "tui.confirm_or": " ou ",
         "tui.confirm_no": "annuler",
+        "tui.basket_added": "+ {attr} — panier : {n}",
+        "tui.basket_removed": "{attr} retiré du panier — {n} restant(s)",
+        "tui.basket_title": "Ajouter {n} paquets",
+        "tui.basket_more": "… et {n} autre(s)",
+        "tui.basket_done": "{n} ajouté(s)",
+        "tui.basket_skipped": ", {n} déjà listé(s)",
+        "tui.basket_failed": ", {n} échec(s) : {msg}",
+        "tui.basket_dry": "Simulation : {n} ajout(s), rien n'écrit.",
+        "tui.yanked": "Copié : {attr}",
+        "tui.no_clipboard": (
+            "Presse-papiers indisponible (wl-copy, xclip ou xsel requis)."
+        ),
         "tui.list_title_padded": " résultats ",
         "tui.list_title_zero": " résultats · 0 ",
         "tui.list_title_count": " résultats · {n} ",
@@ -742,6 +765,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "app.help_fix_git_dry": "print the git command without running it",
         "app.help_sync": "install listed-but-missing packages into the Nix profile (outside NixOS)",
         "app.help_sync_dry": "print the nix command without running it",
+        "app.help_sync_upgrade": "also upgrade listed packages already installed",
         "app.help_print_config": "print the target file and rebuild command, then quit",
         "app.help_term": "search in CLI mode (otherwise open the TUI)",
         "app.help_refresh": "rebuild the nixpkgs index at startup",
@@ -756,6 +780,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "app.help_list_json": "with --list-installed: one JSON line (attrs, count, packages_file, index_age_days)",
         "app.help_undo": "restore packages.nix from the last backup (no rebuild)",
         "app.help_why": "tell whether an attribute is in the configured packages file",
+        "app.help_print": "print the best attr on stdout (composable: scripts, agents)",
         "app.remove_needs_term": (
             "nixpick: --remove needs a term "
             "(e.g. nixpick --remove firefox)."
@@ -810,6 +835,15 @@ STRINGS: dict[str, dict[str, str]] = {
             "Use: nixpick sync --yes"
         ),
         "sync.confirm": "Install into the profile?\n  {cmd}\n[y/N] ",
+        "sync.confirm_upgrade": "Upgrade in the profile?\n  {cmd}\n[y/N] ",
+        "sync.confirm_both": (
+            "Install and upgrade in the profile?\n"
+            "  {install}\n"
+            "  {upgrade}\n[y/N] "
+        ),
+        "sync.upgraded": "Profile upgraded: {refs}",
+        "sync.upgrade_failed": "nix profile upgrade exited with code {code}.",
+        "sync.upgrade_failed_os": "nix profile upgrade: {err}",
         "sync.installed": "Installed: {refs}",
         # ── fix_git_runner.py ────────────────────────────────
         "git.no_flake": (
@@ -1015,6 +1049,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "tui.confirm_yes": "confirm",
         "tui.confirm_or": " or ",
         "tui.confirm_no": "cancel",
+        "tui.basket_added": "+ {attr} — basket: {n}",
+        "tui.basket_removed": "{attr} removed from basket — {n} left",
+        "tui.basket_title": "Add {n} packages",
+        "tui.basket_more": "… and {n} more",
+        "tui.basket_done": "{n} added",
+        "tui.basket_skipped": ", {n} already listed",
+        "tui.basket_failed": ", {n} failed: {msg}",
+        "tui.basket_dry": "Simulation: {n} add(s), nothing written.",
+        "tui.yanked": "Copied: {attr}",
+        "tui.no_clipboard": (
+            "Clipboard unavailable (needs wl-copy, xclip or xsel)."
+        ),
         "tui.list_title_padded": " results ",
         "tui.list_title_zero": " results · 0 ",
         "tui.list_title_count": " results · {n} ",

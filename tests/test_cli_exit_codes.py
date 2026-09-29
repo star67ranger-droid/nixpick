@@ -45,6 +45,29 @@ def test_rofi_sans_rofi_renvoie_1(
     assert "rofi introuvable" in capsys.readouterr().err
 
 
+def test_print_affiche_meilleur_attr(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--print : seul l'attr sur stdout (rien d'autre pour les scripts)."""
+    monkeypatch.setattr(
+        "nixpick.load_index",
+        lambda refresh=False, on_status=None: {"htop": {"pname": "htop", "version": "3"}},
+    )
+    monkeypatch.setattr("sys.argv", ["nixpick", "--print", "htop"])
+    assert main() == 0
+    out = capsys.readouterr()
+    assert out.out == "htop\n"
+    assert out.err == ""
+
+
+def test_print_sans_resultat(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("nixpick.load_index", lambda refresh=False, on_status=None: {})
+    monkeypatch.setattr("sys.argv", ["nixpick", "--print", "zzz"])
+    assert main() == 1
+
+
 def test_erreur_inattendue_renvoie_1_avec_url(
     clean_env: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -121,7 +121,7 @@ nixpick --print-config
 | `nixpick rebuild -y` | Rebuild sans redemander (scripts) |
 | `nixpick rebuild -y --terminal` | Ouvre **kitty** / **foot** pour `sudo` et la sortie |
 | `nixpick sync` | Hors NixOS : installe dans le profil les paquets listés mais absents (jamais de retrait) |
-| `nixpick sync -y` | Idem sans redemander · `--dry-run` affiche la commande |
+| `nixpick sync -y` | Idem sans redemander · `--dry-run` affiche la commande · `--upgrade` met aussi à jour les listés déjà installés |
 | `nixpick doctor` | Fichier packages, cache index, verrou, **Git flake (fichiers suivis)**, flake.lock nixpick, outils, rebuild |
 | `nixpick doctor --json` | Même diagnostic en JSON |
 | `nixpick --why <attr>` | Indique si l’attribut est dans le fichier configuré (ligne approximative) |
@@ -156,7 +156,8 @@ suggestions au repos, footer en bas.
 - **↑ ↓** (ou **Ctrl+N** / **Ctrl+P**) : naviguer sans quitter la recherche
 - **PageUp** / **PageDown** : d’un écran de résultats
 - **↵** : ajouter · **Ctrl+X** : retirer (si déjà dans la config)
-- **Ctrl+L** : catalogue des paquets déjà listés
+- **Espace** : panier multi-sélection (`+`) · **↵** avec panier non vide : tout ajouter d'un coup
+- **y** (focus liste) : copie l'attribut dans le presse-papiers (wl-copy/xclip/xsel)
 - **Ctrl+I** : masquer les paquets installés · **Ctrl+D** : simulation
 - **Tab** : basculer recherche / liste (puis `x l i d t q` au focus liste) · **Esc** : vider la recherche, puis quitter
 - **Ctrl+R** : reconstruire l’index · **?** / **F1** : aide

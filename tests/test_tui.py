@@ -619,6 +619,97 @@ def test_parametres_chemin_invalide_reste_ouvert(
     _run(scenario())
 
 
+def test_panier_toggle_espace(tui_env: dict[str, Any]) -> None:
+    """Espace (focus liste) ajoute/retire du panier, marqueur + visible."""
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            setup.mock_input.type_text("fire")
+            assert await _pump(setup, lambda: bool(app.shown.peek()), timeout=3.0)
+            setup.mock_input.press_key("tab")
+            await _pump(setup, timeout=0.2)
+            first = app.shown.peek()[0].attr
+            setup.mock_input.press_key(" ")
+            await _pump(setup, timeout=0.2)
+            assert set(app.basket) == {first}
+            assert "+" in _text(setup)
+            setup.mock_input.press_key(" ")
+            await _pump(setup, timeout=0.2)
+            assert app.basket == {}
+        finally:
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
+def test_panier_commit_groupe(
+    tui_env: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Entrée avec panier non vide → une modale, un commit par paquet."""
+
+    async def scenario() -> None:
+        committed: list[str] = []
+
+        def fake_plan_add(attr: str, description: str) -> tui.AddPlan:
+            return tui.AddPlan(
+                attr=attr,
+                description=description,
+                new_line=f"    {attr}\n",
+                context_lines=[],
+                packages_file=tmp_path / "p.nix",
+                backup_path=tmp_path / "p.bak",
+            )
+
+        def fake_commit(plan: tui.AddPlan, dry_run: bool = False) -> None:
+            committed.append(plan.attr)
+
+        monkeypatch.setattr(tui, "plan_add", fake_plan_add)
+        monkeypatch.setattr(tui, "commit_add", fake_commit)
+        app, setup = await _boot()
+        try:
+            setup.mock_input.type_text("fire")
+            assert await _pump(setup, lambda: len(app.shown.peek()) >= 2, timeout=3.0)
+            setup.mock_input.press_key("tab")
+            await _pump(setup, timeout=0.2)
+            setup.mock_input.press_key(" ")
+            setup.mock_input.press_key("down")
+            await _pump(setup, timeout=0.2)
+            setup.mock_input.press_key(" ")
+            await _pump(setup, timeout=0.2)
+            wanted = set(app.basket)
+            assert len(wanted) == 2
+            setup.mock_input.press_key("enter")
+            await _pump(setup, timeout=0.3)
+            text = _text(setup)
+            assert "Ajouter 2 paquets" in text
+            setup.mock_input.press_key("y")
+            await _pump(setup, timeout=0.5)
+            assert sorted(committed) == sorted(wanted)
+            assert app.basket == {}
+            assert "2 ajouté(s)" in _text(setup)
+        finally:
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
+def test_panier_dry_run_necrit_rien() -> None:
+    """Panier + simulation : toast, panier vidé, aucun commit."""
+    app = tui.TuiApp()
+    app.dry_run.set(True)
+    app.basket = {"htop": ""}
+    committed: list[str] = []
+    orig = tui.commit_add
+    tui.commit_add = lambda plan, dry_run=False: committed.append(plan.attr)  # type: ignore[method-assign]
+    try:
+        app._commit_basket(["htop"])
+        assert committed == []
+        assert app.basket == {}
+    finally:
+        tui.commit_add = orig
+
+
 def test_rendu_anglais_apres_bascule(tui_env: dict[str, Any]) -> None:
     """Le passage en anglais se voit à l'écran (footer + hint)."""
 
@@ -636,6 +727,64 @@ def test_rendu_anglais_apres_bascule(tui_env: dict[str, Any]) -> None:
             assert "no results" in _text(setup)
         finally:
             set_language("fr")
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
+def test_yank_copie_attr(
+    tui_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """y au focus liste : attr dans wl-copy + toast."""
+    calls: list[tuple[list[str], object]] = []
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/wl-copy")
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        calls.append((argv, kwargs.get("input")))
+
+        class Proc:
+            returncode = 0
+
+        return Proc()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            setup.mock_input.type_text("fire")
+            assert await _pump(setup, lambda: bool(app.shown.peek()), timeout=3.0)
+            setup.mock_input.press_key("tab")
+            await _pump(setup, timeout=0.2)
+            setup.mock_input.press_key("y")
+            await _pump(setup, timeout=0.3)
+            assert calls, "wl-copy non appelé"
+            assert calls[0][0] == ["wl-copy"]
+            assert calls[0][1] in [row.attr for row in app.shown.peek()]
+            assert "Copié" in _text(setup)
+        finally:
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
+def test_yank_sans_outil_presse_papiers(
+    tui_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sans wl-copy/xclip/xsel : toast explicite, pas de crash."""
+    monkeypatch.setattr("shutil.which", lambda name: None)
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            setup.mock_input.type_text("fire")
+            assert await _pump(setup, lambda: bool(app.shown.peek()), timeout=3.0)
+            setup.mock_input.press_key("tab")
+            await _pump(setup, timeout=0.2)
+            setup.mock_input.press_key("y")
+            await _pump(setup, timeout=0.3)
+            assert "indisponible" in _text(setup)
+        finally:
             setup.renderer.stop()
 
     _run(scenario())

@@ -13,6 +13,9 @@
 - **i18n FR/EN** : toute l'interface en français (défaut) ou anglais (`language`, `NIXPICK_LANGUAGE`, ou Ctrl+L en direct) ; parité FR/EN testée
 - **Traducteur d'erreurs** : SIGKILL→RAM, channel manquant, index corrompu, Git non suivi… chaque panne connue gagne un conseil (CLI)
 - **Menu paramètres (Ctrl+L)** : langue, fond transparent, fichier packages — appliqués en direct et persistés, sans éditer le TOML à la main
+- **`nixpick --print <terme>`** : meilleur attr sur stdout, composable (`nix shell nixpkgs#$(nixpick --print foo)`)
+- **TUI `y`** : copie l'attribut (wl-copy/xclip/xsel) · **`sync --upgrade`** : met à jour les listés déjà installés (refs unlocked uniquement)
+- **Panier** : `Espace` multi-sélectionne (`+`), `Entrée` ajoute tout d'un coup (modale groupée, résumé ajouté/déjà-listé/échecs)
 - **Audit #3** : 33 constats traités (`docs/AUDIT-REPORT-3.md`) — `rebuild --terminal` sans `-e` sous kitty, garde-fou CLI avec URL, messages sync/doctor honnêtes hors NixOS, imports top-level, mypy sur 14 modules, ruff +S/+C901 (ratchet), coverage 73 (seuil 72), refresh sans pile-up
 
 ## 0.4.0 — 2026-09-28
