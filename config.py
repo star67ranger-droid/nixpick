@@ -14,7 +14,7 @@ from i18n import DEFAULT as DEFAULT_LANGUAGE
 from i18n import SUPPORTED as SUPPORTED_LANGUAGES
 from i18n import t
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path.home() / ".config" / "nixpick"

@@ -1,6 +1,6 @@
 # Changelog
 
-## non publié
+## 0.5.0 — 2026-09-29
 
 - **Hors NixOS** : sans `/etc/nixos`, la cible devient `~/.config/nixpick/packages.nix`, créée (squelette à l'ancre configurée) au premier ajout — `plan_remove` ne crée rien, NixOS inchangé (`tests/test_non_nixos.py`)
 - **`nixpick sync`** : installe dans le profil les paquets listés mais absents (`nix profile install nixpkgs#…`, jamais de retrait, `-y`/`--dry-run`) ; proposé après chaque ajout CLI, suggéré en TUI/Rofi au lieu du rebuild hors NixOS (`tests/test_sync_runner.py`)
