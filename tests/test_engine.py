@@ -112,6 +112,13 @@ def test_parser_counts_nested_lists_and_ignores_comment_brackets(packages_nix: P
     assert insert_at == 5
 
 
+def test_run_command_not_found() -> None:
+    from engine import NixCommandError, run
+
+    with pytest.raises(NixCommandError, match="introuvable"):
+        run(["__nixpick_missing_binary__"], timeout=5)
+
+
 def test_fetch_descriptions_skips_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
     from engine import fetch_descriptions
 

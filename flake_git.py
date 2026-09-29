@@ -69,8 +69,11 @@ def list_untracked_paths(flake_root: Path) -> tuple[list[str], str | None]:
     except (OSError, subprocess.TimeoutExpired) as err:
         return [], f"git status indisponible : {err}"
     if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "").strip()
-        return [], f"git status a échoué (code {proc.returncode}). {err}".strip()
+        git_output = (proc.stderr or proc.stdout or "").strip()
+        detail = f"git status a échoué (code {proc.returncode})."
+        if git_output:
+            detail = f"{detail} {git_output}"
+        return [], detail.strip()
 
     prefix = _flake_path_prefix(flake_root, git_top)
     if prefix is None:
