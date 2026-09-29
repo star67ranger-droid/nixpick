@@ -22,6 +22,7 @@ from cli import run_cli, run_cli_remove
 from config import __version__, get_settings
 from doctor import run_doctor, run_why
 from engine import (
+    NixCommandError,
     build_index,
     index_age_days,
     list_installed_attrs,
@@ -255,7 +256,11 @@ def _run() -> int:
         return result.code
 
     if args.build_index_only:
-        build_index(on_status=lambda m: print(m, file=sys.stderr))
+        try:
+            build_index(on_status=lambda m: print(m, file=sys.stderr))
+        except NixCommandError as err:
+            print(f"nixpick : {err}", file=sys.stderr)
+            return 1
         return 0
 
     if args.rofi:

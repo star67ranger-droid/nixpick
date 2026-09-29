@@ -37,9 +37,22 @@ fi
 
 for theme in nixpick.rasi nixpick-query.rasi; do
   if [[ -f "$ROOT/assets/rofi/$theme" ]]; then
-    cp -f "$ROOT/assets/rofi/$theme" "$ROFI_DIR/$theme"
+    # -n : ne jamais écraser une personnalisation manuelle.
+    cp -n "$ROOT/assets/rofi/$theme" "$ROFI_DIR/$theme"
   fi
 done
+
+# Complétions : artefacts générés, on écrase à chaque install (une
+# complétion périmée mentirait sur les sous-commandes).
+mkdir -p "${HOME}/.local/share/bash-completion/completions" \
+  "${HOME}/.local/share/zsh/site-functions" \
+  "${HOME}/.config/fish/completions"
+cp -f "$ROOT/assets/completions/nixpick.bash" \
+  "${HOME}/.local/share/bash-completion/completions/nixpick"
+cp -f "$ROOT/assets/completions/_nixpick" \
+  "${HOME}/.local/share/zsh/site-functions/_nixpick"
+cp -f "$ROOT/assets/completions/nixpick.fish" \
+  "${HOME}/.config/fish/completions/nixpick.fish"
 
 echo ""
 echo "OK. Ajoute ~/.local/bin au PATH si besoin, puis :"

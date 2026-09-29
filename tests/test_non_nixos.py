@@ -102,5 +102,5 @@ def test_doctor_annonce_creation_hors_nixos(
     monkeypatch.setattr(doctor, "is_nixos", lambda: False)
     reset_settings_cache()
     check = doctor._check_packages_file()
-    assert check.ok is False
+    assert check.ok is True
     assert "créé au premier ajout" in check.detail

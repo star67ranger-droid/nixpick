@@ -60,7 +60,9 @@ def run(cmd: list[str], timeout: int) -> str:
             cmd, capture_output=True, text=True, timeout=timeout, check=True
         ).stdout
     except FileNotFoundError:
-        raise NixCommandError(f"{cmd[0]} est introuvable. Ce script attend NixOS.")
+        raise NixCommandError(
+            f"{cmd[0]} est introuvable. Installe Nix (voir README § Hors NixOS)."
+        )
     except subprocess.TimeoutExpired:
         raise NixCommandError(f"{cmd[0]} a dépassé {timeout} s.")
     except subprocess.CalledProcessError as err:
@@ -444,11 +446,15 @@ def _packages_skeleton() -> str:
 
 
 def _create_packages_skeleton() -> AddFailure | None:
-    """Crée le fichier cible absent (squelette avec l'ancre configurée)."""
+    """Crée le fichier cible absent (squelette avec l'ancre configurée).
+
+    Écriture atomique comme tous les autres chemins : un crash en pleine
+    écriture ne doit jamais laisser un packages.nix tronqué.
+    """
     path = packages_file()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_packages_skeleton(), encoding="utf-8")
+        _atomic_write_text(path, _packages_skeleton())
     except OSError as err:
         return AddFailure(AddOutcome.FILE_MISSING, f"{path} introuvable ({err}).")
     return None
@@ -585,7 +591,10 @@ def packages_lock_path() -> Path:
     un fichier orphelin au cœur du dépôt, jamais supprimé et visible dans
     ``git status``.
     """
-    digest = hashlib.sha1(str(packages_file()).encode("utf-8")).hexdigest()[:16]
+    # sha1 non cryptographique ici : simple pastille d'unicité du nom de verrou.
+    digest = hashlib.sha1(
+        str(packages_file()).encode("utf-8"), usedforsecurity=False
+    ).hexdigest()[:16]
     return _edit_lock_dir() / f"edit-{digest}.lock"
 
 

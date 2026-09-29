@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 from engine import list_installed_attrs
+from messages import is_affirmative
 
 INSTALL_TIMEOUT = 600
 
@@ -92,6 +93,9 @@ def run_sync(*, yes: bool = False, dry_run: bool = False) -> int:
         return 1
     if proc.returncode != 0:
         print("Impossible de lire le profil Nix.", file=sys.stderr)
+        tail = "\n".join(proc.stderr.strip().splitlines()[-3:])
+        if tail:
+            print(tail, file=sys.stderr)
         return 1
 
     refs = missing_refs(listed, parse_profile_list(proc.stdout))
@@ -120,7 +124,7 @@ def run_sync(*, yes: bool = False, dry_run: bool = False) -> int:
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
             return 1
-        if answer not in ("o", "oui", "y", "yes"):
+        if not is_affirmative(answer):
             return 0
 
     code = install_profile_refs(refs)

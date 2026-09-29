@@ -19,8 +19,10 @@ from engine import (
     plan_remove,
     search,
 )
-from messages import cli_cancelled, cli_success_lines
+from flake_git import rebuild_preflight_message
+from messages import cli_cancelled, cli_success_lines, is_affirmative
 from rebuild_runner import run_rebuild
+from sync_runner import install_profile_refs
 
 BOLD, DIM, GREEN, YELLOW, RED, RESET = (
     "\033[1m",
@@ -57,7 +59,7 @@ def run_cli_remove(term: str, dry_run: bool) -> int:
     except (EOFError, KeyboardInterrupt):
         say()
         return 1
-    if answer not in ("o", "oui", "y"):
+    if not is_affirmative(answer):
         say(cli_cancelled())
         return 0
 
@@ -76,6 +78,12 @@ def run_cli_remove(term: str, dry_run: bool) -> int:
     say(f"{GREEN}Retiré.{RESET}")
     for line in cli_success_lines(plan.backup_path):
         say(line if line else "")
+    if not is_nixos():
+        # Pas de prune auto (décision assumée) : le retrait de la liste ne
+        # désinstalle pas le profil — on donne la commande manuelle au lieu
+        # de proposer un rebuild qui échouerait (FileNotFoundError).
+        say(f"Retiré de la liste. Pour désinstaller du profil : nix profile remove {plan.attr}")
+        return 0
     return _maybe_rebuild_after_cli()
 
 
@@ -85,9 +93,8 @@ def _maybe_rebuild_after_cli() -> int:
     except (EOFError, KeyboardInterrupt):
         say()
         return 0
-    if answer not in ("o", "oui", "y"):
+    if not is_affirmative(answer):
         return 0
-    from flake_git import rebuild_preflight_message
 
     preflight = rebuild_preflight_message()
     if preflight:
@@ -151,7 +158,7 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
     except (EOFError, KeyboardInterrupt):
         say()
         return 1
-    if answer not in ("o", "oui", "y"):
+    if not is_affirmative(answer):
         say(cli_cancelled())
         return 0
 
@@ -178,17 +185,19 @@ def run_cli(term: str, refresh: bool, dry_run: bool) -> int:
 
 
 def _maybe_install_after_cli(attr: str) -> int:
-    """Hors NixOS : propose d'installer l'attribut dans le profil."""
-    from sync_runner import install_profile_refs
+    """Hors NixOS : propose d'installer l'attribut dans le profil.
 
+    Retourne le code d'install (l'ajout reste acquis même en cas d'échec,
+    le message le dit explicitement pour les scripts).
+    """
     try:
         answer = input(f"\nInstaller nixpkgs#{attr} dans ton profil ? [o/N] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         say()
         return 0
-    if answer not in ("o", "oui", "y", "yes"):
+    if not is_affirmative(answer):
         return 0
     code = install_profile_refs([f"nixpkgs#{attr}"])
     if code != 0:
-        say(f"{RED}L'ajout a réussi, mais l'installation a échoué.{RESET}")
-    return 0
+        say(f"{RED}L'ajout a réussi, mais l'installation a échoué (code {code}).{RESET}")
+    return code

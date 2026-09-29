@@ -66,6 +66,7 @@ from engine import (  # noqa: E402
     PackageIndex,
     RemoveFailure,
     RemovePlan,
+    _sanitize_description,
     commit_add,
     commit_remove,
     index_age_days,
@@ -85,6 +86,28 @@ from theme import (  # noqa: E402
 
 _SEARCH_DEBOUNCE = 0.22
 _DESC_DEBOUNCE = 0.35
+
+
+def _safe_when_small(key: str, ctrl: bool) -> bool:
+    """Touches autorisées sous les seuils : navigation et sorties uniquement.
+
+    On ne valide jamais une modale à l'aveugle derrière l'overlay
+    « terminal trop petit » (ni ajout, ni retrait, ni rebuild d'index,
+    ni toggle persistant).
+    """
+    if ctrl:
+        return key == "c"  # quitter
+    return key in (
+        "escape",
+        "up",
+        "down",
+        "pageup",
+        "pagedown",
+        "tab",
+        "f1",
+        "question_mark",
+        "?",
+    )
 _ROWS_OVERHEAD = 8  # chrome(1) + recherche(3) + hint(1) + titre liste(1) + suggestions(1) + footer(1)
 _SEARCH_MAX_WIDTH = 72  # la barre de recherche est centrée et bornée
 _VERSION_COL = 12  # largeur de la colonne « version » (alignée à droite)
@@ -116,17 +139,17 @@ _HELP_KEYS = (
     ("ctrl+n / p", "suivant / précédent (depuis la recherche)"),
     ("pageup / down", "d'un écran de résultats"),
     ("↵", "ajouter le paquet surligné"),
-    ("x", "retirer (si ● déjà dans packages.nix)"),
-    ("l", "catalogue des paquets déjà dans la config"),
+    ("x", "retirer — au focus liste (sinon ^X)"),
+    ("l", "catalogue — au focus liste (sinon ^L)"),
     ("tab", "aller à la liste, puis x l i d t q"),
     ("esc", "vider la recherche, puis quitter"),
     ("j k", "naviguer (quand la liste a le focus)"),
     ("F1 / ?", "aide"),
     ("ctrl+r", "reconstruire l'index"),
-    ("i / ctrl+i", "masquer les paquets déjà dans la config"),
-    ("d / ctrl+d", "mode simulation"),
-    ("t / ctrl+t", "fond transparent"),
-    ("q", "quitter"),
+    ("i / ctrl+i", "masquer ● (i : focus liste)"),
+    ("d / ctrl+d", "mode simulation (d : focus liste)"),
+    ("t / ctrl+t", "fond transparent (t : focus liste)"),
+    ("q", "quitter — au focus liste (sinon esc)"),
 )
 
 
@@ -340,6 +363,7 @@ class TuiApp:
         # générateurs / minuteries
         self._search_generation = 0
         self._desc_generation = 0
+        self._index_generation = 0
         self._last_search_query = ""
         self._search_seq = 0
         self._toast_seq = 0
@@ -409,6 +433,9 @@ class TuiApp:
     # ── index ──────────────────────────────────────────────────────────────
 
     def load_index_worker(self, refresh: bool) -> None:
+        self._index_generation += 1
+        generation = self._index_generation
+
         def work() -> None:
             # Une exception non attrapée laisserait `loading` bloqué à True :
             # l'écran de chargement ne s'effacerait jamais et aucun message
@@ -416,10 +443,19 @@ class TuiApp:
             # figé *avant* le `post` : `err` est effacé en fin de bloc except.
             try:
                 raw = load_index(refresh=refresh, on_status=self._post_status)
+                if generation != self._index_generation:
+                    return  # un refresh plus récent a pris le relais
                 pkg_index = PackageIndex.from_dict(raw)
             except Exception as err:  # noqa: BLE001 — tout échec doit être signalé
                 message = _index_error_message(err)
-                self.post(lambda: self._on_index_error(message))
+                # NixCommandError = panne routinière documentée (pas de channel,
+                # OOM, timeout) : pas d'URL. Le reste est inattendu → signalable.
+                reportable = not isinstance(err, NixCommandError)
+                self.post(
+                    lambda m=message, r=reportable: self._on_index_error(m, r)
+                )
+                return
+            if generation != self._index_generation:
                 return
             self.post(lambda: self._on_index_ready(pkg_index))
 
@@ -433,12 +469,14 @@ class TuiApp:
         self.loading.set(True)
         self.status.set(message)
 
-    def _on_index_error(self, message: str) -> None:
+    def _on_index_error(self, message: str, reportable: bool = True) -> None:
         self.loading.set(False)
         self.status.set("")
         self.index_failed.set(True)
         self.rev_bump()
-        self.notify(f"{message} — À signaler : {ISSUES_URL}", level="error")
+        if reportable:
+            message = f"{message} — À signaler : {ISSUES_URL}"
+        self.notify(message, level="error")
 
     def _on_index_ready(self, pkg_index: PackageIndex) -> None:
         self.pkg_index = pkg_index
@@ -453,6 +491,11 @@ class TuiApp:
             self._schedule_search(query)
 
     def action_refresh_index(self) -> None:
+        # Pas de pile-up : un rebuild déjà en cours ignore la demande (le
+        # worker orphelin, lui, finit son nix-env sans appliquer le résultat).
+        if self.loading.peek():
+            self.notify("Reconstruction déjà en cours…", timeout=2)
+            return
         self.load_index_worker(refresh=True)
 
     # ── recherche ──────────────────────────────────────────────────────────
@@ -846,12 +889,21 @@ class TuiApp:
 
     # ── routage des touches ────────────────────────────────────────────────
 
+    def _too_small(self) -> bool:
+        width, height = self.dims()
+        return width < _MIN_UI_WIDTH or height < _MIN_UI_HEIGHT
+
     def on_key(self, event: Any) -> None:
         key = str(getattr(event, "key", "") or "")
         ctrl = bool(getattr(event, "ctrl", False))
 
         if self.modal.peek() is not None:
+            # Modale ouverte sur terminal trop petit : seul esc annule.
+            if self._too_small() and key != "escape":
+                return
             self._modal_key(key)
+            return
+        if self._too_small() and not _safe_when_small(key, ctrl):
             return
         if ctrl:
             self._ctrl_key(key)
@@ -1279,8 +1331,8 @@ class TuiApp:
             height=box_height,
             background_color=c.surface_elevated,
             border=True,
-            border_style="round",
-            border_color=c.accent_alt,
+            border_style="single",
+            border_color=c.text_muted,
             padding_x=2,
             padding_y=1,
             overflow="hidden",
@@ -1317,7 +1369,11 @@ class TuiApp:
         description = getattr(plan, "description", "")
         if description:
             children.append(_line(""))
-            children.append(_line(_ellipsis(description, content_width), c.text))
+            # Description assainie (pas de \n) avant troncature : une meta
+            # multiligne cassait la modale (ligne height=1, sans repli).
+            children.append(
+                _line(_ellipsis(_sanitize_description(description), content_width), c.text)
+            )
 
         diff = _diff_lines(plan.context_lines, "-" if removing else "+", c)
         children.append(_line(""))
@@ -1326,7 +1382,7 @@ class TuiApp:
                 *diff,
                 title=" aperçu ",
                 border=True,
-                border_style="round",
+                border_style="single",
                 border_color=c.danger if removing else c.text_muted,
                 background_color=c.background,
                 padding_x=1,
@@ -1354,8 +1410,8 @@ class TuiApp:
             width=box_width,
             background_color=c.surface_elevated,
             border=True,
-            border_style="round",
-            border_color=c.danger if removing else c.accent,
+            border_style="single",
+            border_color=c.danger if removing else c.text_muted,
             padding_x=2,
             padding_y=1,
             max_height=max(8, height - 2),
@@ -1419,7 +1475,7 @@ def _make_app(app: TuiApp) -> Any:
                     Text("> ", fg=c.primary, bold=True, width=2, wrap_mode="none", flex_shrink=0),
                     search_input,
                     border=True,
-                    border_style="round",
+                    border_style="single",
                     border_color=search_border,
                     background_color=surface,
                     padding_x=1,
@@ -1480,7 +1536,7 @@ def _make_app(app: TuiApp) -> Any:
                     Dynamic(render=app.detail_region, flex_direction="column"),
                     title=" détail ",
                     border=True,
-                    border_style="round",
+                    border_style="single",
                     border_color=c.detail_title,
                     background_color=surface,
                     padding_x=2,

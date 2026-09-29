@@ -64,8 +64,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.ruff]
-# Baseline lint (TST-02) : sélection explicite, pas de familles larges
-# (évite les faux positifs S607 « git »/« notify-send » non absolus, E501, …).
+# Baseline lint : sélection explicite + S/C901 avec garde-fous.
 # E402 protège l'ordre d'imports de tui.py : native_env.ensure_opentui_libs()
 # DOIT précéder `import opentui` (libstdc++ NixOS) — les `# noqa: E402` sont
 # voulus et RUF100 les contrôle.
@@ -87,11 +86,24 @@ select = [
   "PLW1510", # subprocess sans check= explicite
   "S110", # try/except/pass
   "BLE001", # except aveugle
+  "S", # bandit (sauf S603/S607 ci-dessous)
+  "C901", # complexité : ratchet au pire actuel (run_rofi 24)
+]
+ignore = [
+  "S603", # subprocess en argv sans shell=True : pattern sûr (grep : zéro shell=True)
+  "S607", # chemins partiels voulus : absolus impossibles (store NixOS), which() + messages sinon
 ]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S108"] # asserts et chemins factices : idiomes de test
+
 [tool.mypy]
-# Socle typage : engine.py + sync_runner.py (config/theme suivis en import).
-# tui.py hors périmètre (API opentui non typée, Any structurel).
+# Socle typage : tout sauf tui.py (pattern réactif opentui incompatible avec
+# les stubs : Callable passé où RGBA|str|int attendu — 13 erreurs hors sujet).
+# CI : mypy --follow-imports=skip <les 14 modules> (tui exclu).
 python_version = "3.12"
 
 [tool.coverage.run]

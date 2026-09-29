@@ -15,7 +15,7 @@ from rebuild_runner import run_rebuild
 @pytest.fixture(autouse=True)
 def _env_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NIXPICK_REBUILD_COMMAND", "echo nixos-rebuild-test")
-    monkeypatch.setattr("flake_git.rebuild_preflight_message", lambda: None)
+    monkeypatch.setattr("rebuild_runner.rebuild_preflight_message", lambda: None)
     reset_settings_cache()
 
 
@@ -35,7 +35,7 @@ def test_run_rebuild_declines_without_yes(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_run_rebuild_runs_with_yes(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("flake_git.rebuild_preflight_message", lambda: None)
+    monkeypatch.setattr("rebuild_runner.rebuild_preflight_message", lambda: None)
     with mock.patch("subprocess.run") as run:
         run.return_value = mock.Mock(returncode=0)
         assert run_rebuild(yes=True) == 0
@@ -47,7 +47,7 @@ def test_rebuild_command_does_not_interpret_shell_syntax(
 ) -> None:
     monkeypatch.setenv("NIXPICK_REBUILD_COMMAND", "echo safe; touch /tmp/nixpick-pwned")
     reset_settings_cache()
-    monkeypatch.setattr("flake_git.rebuild_preflight_message", lambda: None)
+    monkeypatch.setattr("rebuild_runner.rebuild_preflight_message", lambda: None)
     with mock.patch("subprocess.run") as run:
         run.return_value = mock.Mock(returncode=0)
         assert run_rebuild(yes=True) == 0
@@ -56,7 +56,43 @@ def test_rebuild_command_does_not_interpret_shell_syntax(
 
 def test_run_rebuild_blocked_by_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "flake_git.rebuild_preflight_message",
+        "rebuild_runner.rebuild_preflight_message",
         lambda: "Rebuild bloqué avant lancement",
     )
     assert run_rebuild(yes=True) == 1
+
+
+def test_terminal_argv_kitty_sans_option_e() -> None:
+    from rebuild_runner import _terminal_argv
+
+    # kitty n'a pas d'option -e (vérifié) ; les autres la gardent.
+    assert _terminal_argv("kitty", "echo hi") == ["kitty", "bash", "-lc", "echo hi"]
+    assert _terminal_argv("alacritty", "echo hi") == [
+        "alacritty",
+        "-e",
+        "bash",
+        "-lc",
+        "echo hi",
+    ]
+
+
+def test_run_rebuild_terminal_kitty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("rebuild_runner._default_terminal", lambda: "kitty")
+    with mock.patch("subprocess.run") as run:
+        run.return_value = mock.Mock(returncode=0)
+        assert run_rebuild(yes=True, in_terminal=True) == 0
+        argv = run.call_args.args[0]
+        assert argv[:2] == ["kitty", "bash"]
+        assert "-e" not in argv
+
+
+def test_run_rebuild_terminal_env_invalide_repli(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NIXPICK_REBUILD_TERMINAL", "terminal-fantome")
+    monkeypatch.setattr("rebuild_runner._default_terminal", lambda: "alacritty")
+    with mock.patch("subprocess.run") as run:
+        run.return_value = mock.Mock(returncode=0)
+        assert run_rebuild(yes=True, in_terminal=True) == 0
+        assert run.call_args.args[0][0] == "alacritty"
+    assert "introuvable" in capsys.readouterr().err

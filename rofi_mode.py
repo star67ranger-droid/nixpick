@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from config import rofi_theme_paths
+from config import is_nixos, rofi_theme_paths
 from engine import (
     DEFAULT_RESULT_LIMIT,
     AddFailure,
@@ -23,6 +23,8 @@ from engine import (
     plan_remove,
     search,
 )
+from fix_git_runner import run_fix_git
+from flake_git import check_flake_untracked, rebuild_preflight_notify_body
 from messages import (
     ROFI_CANCEL,
     ROFI_CONFIRM_ADD,
@@ -46,6 +48,8 @@ from messages import (
     rofi_rebuild_choices,
 )
 from rebuild_runner import run_rebuild
+from rofi_theme import sync_rofi_themes
+from sync_runner import run_sync
 
 
 def _rofi_theme(*, query_only: bool = False) -> str:
@@ -126,11 +130,6 @@ def _rofi_preview(message: str) -> None:
 
 
 def _offer_rebuild() -> None:
-    from config import is_nixos
-    from fix_git_runner import run_fix_git
-    from flake_git import check_flake_untracked, rebuild_preflight_notify_body
-    from sync_runner import run_sync
-
     if not is_nixos():
         answer = _rofi(
             "Installer les paquets listés dans ton profil ?",
@@ -139,6 +138,9 @@ def _offer_rebuild() -> None:
         )
         if answer != ROFI_SYNC_NOW:
             return
+        # `nix profile install` peut durer des minutes, rofi déjà fermé :
+        # on annonce le début pour éviter les relances en double.
+        _notify("nixpick — sync", "Installation dans le profil en cours…")
         code = run_sync(yes=True)
         if code != 0:
             _notify(
@@ -238,8 +240,6 @@ def _confirm_plan(
 
 
 def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
-    from rofi_theme import sync_rofi_themes
-
     if not shutil.which("rofi"):
         print(
             "nixpick : rofi introuvable — installe-le (pkgs.rofi) ou utilise "
@@ -282,13 +282,17 @@ def run_rofi(refresh: bool = False, dry_run: bool = False) -> int:
     by_label: dict[str, str] = {}
     for attr, version in results:
         mark = " ✓" if attr in installed else ""
-        label = f"{attr}  ·  {version}{mark}"
+        # Une version multiligne casserait le mapping ligne → attribut.
+        label = f"{attr}  ·  {version}{mark}".replace("\n", " ")
         labels.append(label)
         by_label[label] = attr
 
     chosen = _rofi(f"Choisir · {term}", labels)
-    if not chosen or chosen not in by_label:
+    if not chosen:
         return 0
+    if chosen not in by_label:
+        _notify("nixpick — recherche", f"Choix non reconnu : {chosen[:80]}")
+        return 1
 
     attr = by_label[chosen]
     already = attr in installed

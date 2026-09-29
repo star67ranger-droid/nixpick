@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from config import format_rebuild_command
+from config import format_rebuild_command, is_nixos
 from engine import AddFailure, RemoveFailure
 
 ROFI_CONFIRM_ADD = "Confirmer l'ajout"
@@ -19,17 +19,33 @@ ISSUES_URL = "https://github.com/star67ranger-droid/nixpick/issues"
 ROFI_SYNC_NOW = "Installer via sync"
 
 
+def is_affirmative(answer: str) -> bool:
+    """Un seul prédicat de confirmation partout (o/oui/y/yes)."""
+    return answer.strip().lower() in ("o", "oui", "y", "yes")
+
+
 def cli_cancelled() -> str:
     return "Abandonné."
 
 
+def apply_hint() -> str:
+    """Consigne d'application selon la plateforme (source unique)."""
+    return "nixpick sync" if not is_nixos() else "nixpick rebuild"
+
+
 def cli_success_lines(backup_path: Path) -> list[str]:
-    return [
-        f"Sauvegarde : {backup_path}",
-        "",
-        "Pour appliquer : nixpick rebuild",
-        f"  ({format_rebuild_command()})",
-    ]
+    lines = [f"Sauvegarde : {backup_path}", ""]
+    if is_nixos():
+        lines += [
+            "Pour appliquer : nixpick rebuild",
+            f"  ({format_rebuild_command()})",
+        ]
+    else:
+        lines += [
+            "Pour installer : nixpick sync",
+            "  (nix profile install nixpkgs#… des listés)",
+        ]
+    return lines
 
 
 def diff_preview_text(context_lines: list[str], packages_file: Path) -> str:
@@ -105,11 +121,11 @@ def rofi_rebuild_choices(*, git_ok: bool = True) -> list[str]:
 
 
 def _success_body(backup_path: Path) -> str:
-    return (
-        f"Sauvegarde : {backup_path}\n"
-        "Applique avec : nixpick rebuild\n"
-        f"({format_rebuild_command()})"
-    )
+    if is_nixos():
+        how = f"Applique avec : nixpick rebuild\n({format_rebuild_command()})"
+    else:
+        how = "Installe avec : nixpick sync"
+    return f"Sauvegarde : {backup_path}\n{how}"
 
 
 def notify_success_remove(attr: str, backup_path: Path) -> tuple[str, str]:

@@ -6,10 +6,19 @@ Conçu pour une config **modulaire** (`modules/packages.nix`), pas pour tout met
 
 **Projet vibecodé** : idée et usage réel (ma config NixOS / Hyprland) par Pikeo ; le code a été itéré avec des assistants IA (Cursor), puis durci (écritures atomiques, validation des attrs, audits). Les PR et retours sont les bienvenus — l’objectif est un petit outil utile et lisible, pas une usine à gaz.
 
+## Démarrage rapide
+
+```bash
+nixpick              # TUI : taper un nom, Entrée pour ajouter
+nixpick rebuild      # NixOS : applique via nixos-rebuild (confirmation)
+nixpick sync         # hors NixOS : installe les listés dans le profil Nix
+```
+
 ## Prérequis
 
-- **NixOS** (ou machine avec `nix-env` / `nix eval` sur `<nixpkgs>`)
+- **NixOS**, ou toute machine avec **Nix + flakes** (`nix-command`, `flakes`)
 - Python **3.12+**
+- Pour l’index : `nix-env` + un **channel nixpkgs** (`nix-channel --add https://nixos.org/channels/nixos-unstable nixpkgs && nix-channel --update`) — sans channel, l’index est vide
 - Optionnel : **Rofi** pour `nixpick --rofi`
 
 ## Installation
@@ -52,6 +61,16 @@ environment.systemPackages = [ pkgs.nixpick ];
 
 Après mise à jour du dépôt : `nix flake lock --update-input nixpick` puis rebuild.
 
+### Direct via Nix (sans cloner, toute distro avec Nix + flakes)
+
+```bash
+nix run github:star67ranger-droid/nixpick -- --help
+nix profile install github:star67ranger-droid/nixpick  # commande `nixpick` en direct
+```
+
+Testé depuis zéro sur Ubuntu + Nix Determinate (VM) : construction,
+TUI, index, sync.
+
 ## Configuration
 
 Fichier : `~/.config/nixpick/config.toml`
@@ -71,7 +90,8 @@ Variables d’environnement (prioritaires) :
 |----------|------|
 | `NIXPICK_PACKAGES_FILE` | Fichier `.nix` à modifier |
 | `NIXPICK_PACKAGES_ANCHOR` | Ligne d’ancrage (défaut `environment.systemPackages`) |
-| `NIXPICK_REBUILD_COMMAND` | Arguments JSON de la commande de rebuild, p. ex. `["sudo", "nixos-rebuild", "switch"]` (aucun shell) |
+| `NIXPICK_REBUILD_COMMAND` | Tableau TOML ou chaîne shell (`shlex`), p. ex. `["sudo", "nixos-rebuild", "switch"]` — jamais de JSON, aucun shell |
+| `NIXPICK_REBUILD_TERMINAL` | Émulateur pour `rebuild --terminal` (vérifié dans le PATH, sinon repli auto : kitty, foot, alacritty, wezterm) |
 
 Vérifier :
 
@@ -104,6 +124,8 @@ nixpick --print-config
 | `nixpick doctor` | Fichier packages, cache index, verrou, **Git flake (fichiers suivis)**, flake.lock nixpick, outils, rebuild |
 | `nixpick doctor --json` | Même diagnostic en JSON |
 | `nixpick --why <attr>` | Indique si l’attribut est dans le fichier configuré (ligne approximative) |
+| `nixpick --print-config` | Affiche fichier cible, ancre et rebuild puis quitte |
+| `nixpick --tui` | Force la TUI même avec un terme de recherche |
 | `nixpick --transparent` / `--opaque` | Fond TUI (ANSI / Kitty) |
 
 ### Complétion shell
@@ -150,24 +172,38 @@ Après validation : notification, puis menu **« Corriger Git (fix-git) »** (si
 
 Thèmes : `assets/rofi/` dans le dépôt ; nixpick régénère `~/.config/nixpick/rofi/*.rasi` à chaque lancement (les copies de `~/.config/rofi/` ne servent qu'en secours — voir [docs/THEMES.md](docs/THEMES.md)).
 
+## Hors NixOS (Ubuntu, etc. — Nix + flakes requis)
+
+Pas de `/etc/nixos` ? nixpick bascule tout seul :
+
+1. **Cible locale** : `~/.config/nixpick/packages.nix`, créée (squelette) au premier ajout — jamais d’erreur « introuvable ». `NIXPICK_PACKAGES_FILE` reste prioritaire.
+2. **Recherche** : identique (index `nix-env`, descriptions `nix eval`). Prérequis : un channel nixpkgs (voir Prérequis).
+3. **Appliquer** : `nixpick sync` installe dans ton profil les listés absents (`nix profile install nixpkgs#…`, jamais de retrait). Proposé après chaque ajout CLI, suggéré en TUI/Rofi.
+4. **Limites** : pas de `rebuild` (pas de `nixos-rebuild`), install **par utilisateur**, `doctor` signale `/etc/nixos` absent — c’est attendu.
+
+```bash
+nixpick                    # ajouter btop → ~/.config/nixpick/packages.nix
+nixpick sync               # nix profile install nixpkgs#btop (confirmation)
+nixpick sync --dry-run     # voir la commande sans l’exécuter
+```
+
 ## Comportement
 
-- Fichier cible : `/etc/nixos/modules/packages.nix` sur NixOS ; **hors NixOS**
-  (`/etc/nixos` absent) : repli sur `~/.config/nixpick/packages.nix`, créé
-  (squelette) au premier ajout — plus d'erreur « introuvable », le message
-  de succès l'indique. Le rebuild reste NixOS-only (`NIXPICK_PACKAGES_FILE`
-  et `NIXPICK_REBUILD_COMMAND`   forcent toujours ces valeurs).
-- Appliquer hors NixOS : `nixpick sync` (= `nix profile install nixpkgs#…`
-  pour les listés absents du profil) ; proposé automatiquement après
-  chaque ajout CLI, suggéré dans la TUI et Rofi au lieu du rebuild.
-
-- Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours). Prérequis : `nix-env` dans le PATH (`nixpick doctor`).
+- Index : `nix-env -qaP --json` → cache `~/.cache/nixpick/` (rebuild auto ~7 jours). Prérequis : `nix-env` dans le PATH + channel nixpkgs (`nixpick doctor`).
 - Descriptions : `nix eval` à la demande pour les résultats affichés
 - Rebuild **uniquement** si tu confirmes (`nixpick rebuild`, ou « Lancer le rebuild » en Rofi, ou `o` après un ajout CLI)
 - **Fichiers non suivis par Git** dans `/etc/nixos` : le flake ne voit pas les nouveaux chemins (`dotfiles/…`) tant qu’ils ne sont pas `git add`. `nixpick doctor` liste les `??` et propose la commande ; `nixpick rebuild` refuse de lancer `sudo` tant que c’est le cas (Rofi affiche un rappel).
 - Si nixpick est un **input path** dans ton flake NixOS : après chaque changement du dépôt nixpick, mets à jour le lock avant rebuild : `cd /etc/nixos && nix flake lock --update-input nixpick` (`nixpick doctor` signale un hash périmé)
-- Variable optionnelle `NIXPICK_REBUILD_TERMINAL` (défaut : premier parmi kitty, foot, alacritty, wezterm)
 - Sauvegarde horodatée `packages.nix.bak.YYYYMMDD-HHMMSS` avant écriture ; métadonnées dans `~/.cache/nixpick/last-op.json` pour `nixpick --undo`
+
+## Dépannage
+
+- **Recherche vide (« aucun résultat »)** : index vide = souvent pas de channel nixpkgs. Vérifier : `python3 -c "import json; print(len(json.load(open('$HOME/.cache/nixpick/index.json'))))"` → si `0`, `nix-channel --add https://nixos.org/channels/nixos-unstable nixpkgs && nix-channel --update`, puis **Ctrl+R** dans la TUI.
+- **« index indisponible » après reconstruction** : lancer `nixpick --build-index-only` pour voir l’erreur. Cause fréquente : machine trop petite — évaluer nixpkgs-unstable demande plusieurs Go de RAM (2 Go → OOM-kill, `died with SIGKILL`).
+- **Rebuild refusé (« not tracked by Git »)** : `nixpick fix-git` (ou `fix-git -y`), puis rebuild.
+- **`flake.lock` périmé** (nixpick en input path) : `cd /etc/nixos && nix flake lock --update-input nixpick` — `nixpick doctor` le signale.
+- **TUI minuscule / overlay « 40×12 requis »** : agrandir le terminal, pas de contournement.
+- **Crash avec traceback** : copier la sortie dans une issue — https://github.com/star67ranger-droid/nixpick/issues.
 
 ## Hyprland / Waybar (exemple)
 
@@ -185,6 +221,12 @@ Thèmes : `assets/rofi/` dans le dépôt ; nixpick régénère `~/.config/nixpic
 - Après chaque écriture, validation optionnelle via `nix-instantiate --parse` (restaure la sauvegarde si le fichier est invalide).
 - `rebuild_command` est une **liste d’arguments** (TOML tableau ou chaîne parsée par `shlex`) — pas d’évaluation shell sauf le terminal interactif du rebuild.
 - Pas de prise en charge Home Manager pour l’instant
+
+## Projets proches
+
+- [nixmate](https://github.com/daskladas/nixmate) (Rust) : couteau suisse TUI NixOS-only — générations, services, rebuild, doctor… Complémentaire : nixpick se concentre sur recherche + édition d’un fichier, et fonctionne avec Nix seul (voir `nixpick sync`).
+- [ns-tui](https://github.com/briheet/ns-tui) : recherche floue de paquets en TUI.
+- À ne pas confondre avec `duskoide/nixpick` (Rust, homonyme sans rapport).
 
 ## Licence
 

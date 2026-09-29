@@ -58,13 +58,16 @@ def _read_transparent_from_toml(path: Path) -> bool | None:
         return None
     text = path.read_text(encoding="utf-8")
     match = re.search(
-        r"^\s*transparent_background\s*=\s*(true|false)\s*$",
+        r"^\s*transparent_background\s*=\s*(true|false)\s*(?:#.*)?$",
         text,
         re.IGNORECASE | re.MULTILINE,
     )
     if not match:
         return None
     return _parse_bool(match.group(1))
+
+
+_ACTIVE_TRANSPARENT_RE = re.compile(r"^\s*transparent_background\s*=", re.MULTILINE)
 
 
 def load_transparent_background() -> bool:
@@ -81,9 +84,11 @@ def load_transparent_background() -> bool:
 def save_transparent_background(enabled: bool) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     existing = CONFIG_FILE.read_text(encoding="utf-8") if CONFIG_FILE.exists() else ""
-    if "transparent_background" in existing:
+    # Ligne active uniquement : une clé en commentaire ne compte pas, sinon
+    # le toggle serait silencieusement perdu (ni substitué, ni ajouté).
+    if _ACTIVE_TRANSPARENT_RE.search(existing):
         text = re.sub(
-            r"^\s*transparent_background\s*=\s*.+$",
+            r"^\s*transparent_background\s*=.*$",
             f"transparent_background = {'true' if enabled else 'false'}",
             existing,
             flags=re.MULTILINE,
@@ -150,6 +155,8 @@ def get_settings() -> Settings:
     packages_raw = os.environ.get("NIXPICK_PACKAGES_FILE") or nix.get(
         "packages_file", str(default_packages_file())
     )
+    if not isinstance(packages_raw, str):
+        raise ValueError("packages_file doit être une chaîne (chemin .nix)")
     packages_path = Path(packages_raw).expanduser()
     if packages_path.suffix != ".nix":
         raise ValueError(
@@ -159,6 +166,8 @@ def get_settings() -> Settings:
     anchor = os.environ.get("NIXPICK_PACKAGES_ANCHOR") or nix.get(
         "packages_anchor", DEFAULT_ANCHOR
     )
+    if not isinstance(anchor, str) or not anchor.strip():
+        raise ValueError("packages_anchor doit être une chaîne non vide")
     rebuild = os.environ.get("NIXPICK_REBUILD_COMMAND") or nix.get(
         "rebuild_command", DEFAULT_REBUILD
     )
@@ -175,7 +184,7 @@ def get_settings() -> Settings:
 
     _settings = Settings(
         packages_file=packages_path,
-        packages_anchor=str(anchor).strip(),
+        packages_anchor=anchor.strip(),
         rebuild_command=rebuild_argv,
     )
     return _settings

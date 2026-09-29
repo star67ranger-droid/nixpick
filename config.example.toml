@@ -1,5 +1,6 @@
 # Copier vers ~/.config/nixpick/config.toml et adapter.
 # Couleurs : voir docs/THEMES.md
+# Les clés peuvent aussi vivre sous une table [nixpick] (même noms).
 
 packages_file = "/etc/nixos/modules/packages.nix"
 packages_anchor = "environment.systemPackages"

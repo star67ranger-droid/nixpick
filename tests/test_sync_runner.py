@@ -75,7 +75,9 @@ def _patch_nix(
 
     def fake_run(argv: list[str], **kwargs: object) -> SimpleNamespace:
         if argv[:3] == ["nix", "profile", "list"]:
-            return SimpleNamespace(returncode=profile_code, stdout=profile_stdout)
+            return SimpleNamespace(
+                returncode=profile_code, stdout=profile_stdout, stderr="oups"
+            )
         if argv[:3] == ["nix", "profile", "install"]:
             calls.append(argv)
             return SimpleNamespace(returncode=install_code, stdout="")

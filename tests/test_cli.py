@@ -117,6 +117,22 @@ def test_cli_remove_non_liste(
     assert cli.run_cli_remove("htop", dry_run=False) == 0
 
 
+def test_cli_remove_hors_nixos_indique_profile_remove(
+    packages_nix: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Hors NixOS : pas de prompt rebuild, juste la commande manuelle."""
+    packages_nix.write_text(
+        SAMPLE.replace("    firefox\n", "    firefox\n    htop\n"), encoding="utf-8"
+    )
+    monkeypatch.setattr("cli.is_nixos", lambda: False)
+    _answers(monkeypatch, "o")
+    assert cli.run_cli_remove("htop", dry_run=False) == 0
+    assert "htop" not in packages_nix.read_text(encoding="utf-8")
+    assert "nix profile remove htop" in capsys.readouterr().err
+
+
 def test_cli_add_propose_install_oui(
     packages_nix: Path, fake_index: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -124,7 +140,7 @@ def test_cli_add_propose_install_oui(
     monkeypatch.setattr("cli.is_nixos", lambda: False)
     calls: list[list[str]] = []
     monkeypatch.setattr(
-        "sync_runner.install_profile_refs",
+        "cli.install_profile_refs",
         lambda refs: calls.append(refs) or 0,
     )
     _answers(monkeypatch, "1", "o", "o")
@@ -142,22 +158,22 @@ def test_cli_add_propose_install_non(
     def boom(refs: list[str]) -> int:
         raise AssertionError("ne doit pas installer")
 
-    monkeypatch.setattr("sync_runner.install_profile_refs", boom)
+    monkeypatch.setattr("cli.install_profile_refs", boom)
     _answers(monkeypatch, "1", "o", "n")
     assert cli.run_cli("htop", refresh=False, dry_run=False) == 0
     assert "htop" in packages_nix.read_text(encoding="utf-8")
 
 
-def test_cli_add_install_ko_ajout_garde(
+def test_cli_add_install_ko_code_install_ajout_garde(
     packages_nix: Path,
     fake_index: None,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Échec d'install : message visible, mais l'ajout reste (code 0)."""
+    """Échec d'install : code d'install remonté, mais l'ajout reste acquis."""
     monkeypatch.setattr("cli.is_nixos", lambda: False)
-    monkeypatch.setattr("sync_runner.install_profile_refs", lambda refs: 1)
+    monkeypatch.setattr("cli.install_profile_refs", lambda refs: 1)
     _answers(monkeypatch, "1", "o", "o")
-    assert cli.run_cli("htop", refresh=False, dry_run=False) == 0
+    assert cli.run_cli("htop", refresh=False, dry_run=False) == 1
     assert "htop" in packages_nix.read_text(encoding="utf-8")
     assert "échoué" in capsys.readouterr().err

@@ -9,6 +9,13 @@ import subprocess
 import sys
 
 from engine import rebuild_command
+from flake_git import check_flake_untracked, rebuild_preflight_message
+from flake_lock import (
+    check_nixpick_flake_lock,
+    flake_lock_update_hint,
+    nixos_flake_root,
+)
+from messages import is_affirmative
 
 
 def _default_terminal() -> str | None:
@@ -16,6 +23,15 @@ def _default_terminal() -> str | None:
         if shutil.which(name):
             return name
     return None
+
+
+def _terminal_argv(term: str, inner: str) -> list[str]:
+    """Argv par terminal : `kitty` n'a pas d'option `-e` (vérifié via
+    `kitty --help` — `kitty prog…` directement). foot/alacritty/wezterm
+    gardent `-e` (non vérifiés sur cette machine)."""
+    if term == "kitty":
+        return [term, "bash", "-lc", inner]
+    return [term, "-e", "bash", "-lc", inner]
 
 
 def run_rebuild(
@@ -34,8 +50,6 @@ def run_rebuild(
     if dry_run:
         print(f"[dry-run] {display_cmd}")
         return 0
-
-    from flake_git import rebuild_preflight_message
 
     preflight = rebuild_preflight_message()
     if preflight:
@@ -56,17 +70,25 @@ def run_rebuild(
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
             return 1
-        if answer not in ("o", "oui", "y", "yes"):
+        if not is_affirmative(answer):
             return 0
 
     if in_terminal:
-        term = os.environ.get("NIXPICK_REBUILD_TERMINAL", "").strip() or _default_terminal()
+        configured = os.environ.get("NIXPICK_REBUILD_TERMINAL", "").strip()
+        if configured and shutil.which(configured) is None:
+            print(
+                f"NIXPICK_REBUILD_TERMINAL={configured} introuvable — "
+                "repli sur le terminal détecté.",
+                file=sys.stderr,
+            )
+            configured = ""
+        term = configured or _default_terminal()
         if term:
             inner = (
                 f"{shlex.join(argv)}; status=$?; echo; "
                 "read -r -p 'Terminé — Entrée pour fermer…' _; exit $status"
             )
-            proc = subprocess.run([term, "-e", "bash", "-lc", inner], check=False)
+            proc = subprocess.run(_terminal_argv(term, inner), check=False)
             return int(proc.returncode or 0)
         print(
             "Rebuild terminal : aucun émulateur trouvé (kitty, foot, alacritty, wezterm).",
@@ -83,13 +105,6 @@ def run_rebuild(
 
 
 def _print_rebuild_hints() -> None:
-    from flake_git import check_flake_untracked
-    from flake_lock import (
-        check_nixpick_flake_lock,
-        flake_lock_update_hint,
-        nixos_flake_root,
-    )
-
     print("\n— Aide nixpick (relis l’erreur Nix ci-dessus) —", file=sys.stderr)
     ok_git, git_detail = check_flake_untracked()
     if not ok_git:
@@ -106,8 +121,6 @@ def _print_rebuild_hints() -> None:
         )
     ok, _detail = check_nixpick_flake_lock()
     if not ok:
-        from flake_lock import nixos_flake_root
-
         root = nixos_flake_root()
         if root:
             print(

@@ -445,7 +445,7 @@ def test_aide_lignes_intactes_dans_la_boite(tui_env: dict[str, Any]) -> None:
             assert "background_opacity 0.85" in text
             assert "n'est jamais lancé seul" in text
             last = [ln for ln in text.split("\n") if "n'est jamais lancé seul" in ln]
-            assert last and "╰" not in last[0]  # pas posée sur la bordure basse
+            assert last and "└" not in last[0]  # pas posée sur la bordure basse
         finally:
             setup.renderer.stop()
 
@@ -502,6 +502,71 @@ def test_index_en_echec_ne_bloque_pas_la_tui(
             # on ne ment pas : pas de « aucun résultat » alors que rien n'est chargé
             assert "aucun résultat" not in text
             assert app.last_error is None
+        finally:
+            setup.renderer.stop()
+
+    _run(scenario())
+
+
+def test_index_error_toast_url_seulement_si_inattendu() -> None:
+    """Panne routinière (channel, OOM) : pas d'URL ; inattendu : URL."""
+    app = tui.TuiApp()
+    app._on_index_error("panne routinière", reportable=False)
+    assert "github" not in (app.toast.peek() or "")
+    app._on_index_error("panne bizarre", reportable=True)
+    assert "github" in (app.toast.peek() or "")
+
+
+def test_refresh_ignore_si_chargement_en_cours() -> None:
+    """Pas de pile-up : Ctrl+R pendant un build = toast, pas de worker."""
+    app = tui.TuiApp()
+    app.loading.set(True)
+    calls: list[bool] = []
+    app.load_index_worker = lambda refresh=False: calls.append(refresh)
+    app.action_refresh_index()
+    assert calls == []
+    assert "déjà en cours" in (app.toast.peek() or "")
+
+
+def test_petit_terminal_bloque_validation_modale() -> None:
+    """Sous les seuils : 'y' ne valide pas à l'aveugle, esc annule."""
+    from types import SimpleNamespace
+
+    assert tui._safe_when_small("enter", False) is False
+    assert tui._safe_when_small("x", True) is False
+    assert tui._safe_when_small("r", True) is False
+    assert tui._safe_when_small("escape", False) is True
+    assert tui._safe_when_small("c", True) is True
+    assert tui._safe_when_small("up", False) is True
+
+    app = tui.TuiApp()
+    app.dims.set((30, 8))
+    app.modal.set({"kind": "add", "plan": None, "row": None})
+    app.on_key(SimpleNamespace(key="y", ctrl=False))
+    assert app.modal.peek() is not None
+    app.on_key(SimpleNamespace(key="escape", ctrl=False))
+    assert app.modal.peek() is None
+
+
+def test_modale_ajout_description_multiligne_assainie(
+    tui_env: dict[str, Any],
+) -> None:
+    """Une meta.description avec \\n ne casse plus la modale (une ligne)."""
+
+    async def scenario() -> None:
+        app, setup = await _boot()
+        try:
+            plan = tui.AddPlan(
+                attr="htop",
+                description="première\nseconde",
+                new_line="    htop\n",
+                context_lines=["];", "+     htop"],
+                packages_file=Path("/tmp/x.nix"),
+                backup_path=Path("/tmp/x.bak"),
+            )
+            app._open_modal({"kind": "add", "plan": plan, "row": None})
+            await _pump(setup, timeout=0.3)
+            assert "première seconde" in _text(setup)
         finally:
             setup.renderer.stop()
 

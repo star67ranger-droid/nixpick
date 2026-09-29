@@ -10,6 +10,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 import engine
 from config import is_nixos
@@ -40,8 +41,8 @@ def _check_packages_file() -> Check:
         if not is_nixos():
             return Check(
                 "Fichier packages",
-                False,
-                f"{path} n'existe pas encore (hors NixOS : créé au premier ajout).",
+                True,
+                f"{path} n'existe pas encore (sera créé au premier ajout).",
             )
         parent = path.parent
         if parent.exists() and os.access(parent, os.W_OK):
@@ -149,10 +150,13 @@ def _check_rebuild() -> Check:
             False,
             "rebuild_command vide — configure config.toml ou NIXPICK_REBUILD_COMMAND.",
         )
+    detail = f"Après ajout ou retrait : {cmd}"
+    if not is_nixos():
+        detail += " — sans objet hors NixOS (appliquer avec `nixpick sync`)."
     return Check(
         "Commande rebuild",
         True,
-        f"Après ajout ou retrait : {cmd}",
+        detail,
     )
 
 
@@ -193,7 +197,7 @@ def format_doctor_report(checks: list[Check]) -> str:
     return "\n".join(lines)
 
 
-def run_doctor(*, as_json: bool = False, out: object | None = None) -> int:
+def run_doctor(*, as_json: bool = False, out: TextIO | None = None) -> int:
     stream = out or sys.stdout
     checks = collect_checks()
     if as_json:
@@ -244,7 +248,7 @@ def _git_log_line(packages_path: Path, line_no: int) -> str | None:
     return proc.stdout.strip()
 
 
-def run_why(attr: str, *, out: object | None = None) -> int:
+def run_why(attr: str, *, out: TextIO | None = None) -> int:
     stream = out or sys.stdout
     attr = attr.strip()
     if not attr or not ATTR_NAME_RE.match(attr):

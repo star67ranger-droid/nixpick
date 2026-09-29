@@ -13,6 +13,7 @@ from flake_git import (
     untracked_git_add_target,
 )
 from flake_lock import nixos_flake_root
+from messages import is_affirmative
 
 
 def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
@@ -66,7 +67,7 @@ def run_fix_git(*, yes: bool = False, dry_run: bool = False) -> int:
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
             return 1
-        if answer not in ("o", "oui", "y", "yes"):
+        if not is_affirmative(answer):
             return 0
 
     code = git_add_untracked(git_top, paths)

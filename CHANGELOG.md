@@ -9,6 +9,8 @@
 - **Typage** : `mypy engine.py` vert en CI (4 `None.get` potentiels corrigés dans `config.py` / `theme.py`)
 - **Coverage** : `--cov-fail-under=70` en CI (plancher mesuré 71) + 8 tests du mode CLI interactif (`tests/test_cli.py`, `cli.py` 8 % → 61 %)
 - **Release** : workflow auto au push de tag `v*` (notes = section CHANGELOG) ; release v0.4.0 publiée sur GitHub
+- **UI** : coins carrés (`single`) partout, bordures en gris muted (style opencode) — l'accent bleu ne reste que sur le fonctionnel (focus, sélection) ; README réécrit (quickstart, hors NixOS, dépannage)
+- **Audit #3** : 33 constats traités (`docs/AUDIT-REPORT-3.md`) — `rebuild --terminal` sans `-e` sous kitty, garde-fou CLI avec URL, messages sync/doctor honnêtes hors NixOS, imports top-level, mypy sur 14 modules, ruff +S/+C901 (ratchet), coverage 73 (seuil 72), refresh sans pile-up
 
 ## 0.4.0 — 2026-09-28
 
